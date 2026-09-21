@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-CHD.OPCUA.Worker-8f321a39-0c93-4e73-9f2d-df79966d368d</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="OpcUaClientConfig.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CHD.OPCUA.Client\CHD.OPCUA.Client.csproj" />
+  </ItemGroup>
+</Project>
