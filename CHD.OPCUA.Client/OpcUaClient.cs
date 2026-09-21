@@ -7,16 +7,24 @@ using Microsoft.Extensions.Options;
 using Opc.Ua;
 using Opc.Ua.Client;
 using Opc.Ua.Client.ComplexTypes;
+using Opc.Ua.Client.Subscriptions;
+using Opc.Ua.Client.Subscriptions.MonitoredItems;
 using Opc.Ua.Configuration;
 using System.Diagnostics;
 using System.Net;
 using System.Security.Principal;
 using System.Text.Unicode;
 using System.Xml.Linq;
+using CHD.OPCUA.Client.Extensions;
+using SubscriptionOptions = Opc.Ua.Client.Subscriptions.SubscriptionOptions;
+using MonitoredItemOptions = Opc.Ua.Client.Subscriptions.MonitoredItems.MonitoredItemOptions;
 
 namespace CHD.OPCUA.Client
 {
-    public class OpcUaClient(ILogger<OpcUaClient> logger, IOptionsMonitor<Contracts.Options.OpcUaClientOptions> optionsMonitor) : IOpcUAClient
+    public class OpcUaClient(ILogger<OpcUaClient> logger,
+        NotificationHandler subscriptionNotificationHandler,
+        IOptionsMonitor<Contracts.Options.OpcUaClientOptions> optionsMonitor,
+        IOptionsMonitor<SubscriptionOptions> subscritptionsOptionsMonitor) : IOpcUAClient
     {
         private Contracts.Options.OpcUaClientOptions _options => optionsMonitor.CurrentValue;
         private ITelemetryContext _telemetryContext = DefaultTelemetry.Create(c => c.SetMinimumLevel(LogLevel.Trace));
@@ -28,9 +36,12 @@ namespace CHD.OPCUA.Client
 
         private ISession _session;
 
+        private ISubscription _subscription;
+
+
         public bool IsConnected => _session is not null && _session.Connected;
 
-        public event EventHandler<MonitoredItemEventArgs> MonitoredItemNotification;
+        public event AsyncEventHandler<MonitoredItemEventArgs> MonitoredItemNotification;
 
         public async Task StartAsync(CancellationToken cancellationToken = default)
         {
@@ -62,11 +73,36 @@ namespace CHD.OPCUA.Client
                 {
                     NodeId = n,
                     AttributeId = Attributes.Value,
-                    Value = new DataValue(ChangeType(dataValue, value), StatusCodes.Good, DateTime.MinValue, DateTime.MinValue)
+                    Value = new DataValue(dataValue.ChangeType(value), StatusCodes.Good, DateTime.MinValue, DateTime.MinValue)
                 };
                 var res = await _session.WriteAsync(null, new[] { writeValue }, cancellationToken);
                 return res.Results.ToList().All(a => StatusCode.IsGood(a));
             });
+
+        public Task<bool> MonitorItem(string node, int sampingInteral = 500, CancellationToken cancellationToken = default)
+            => ExecuteForNode<bool>(node, n =>
+            {
+                var options = new MonitoredItemOptions
+                {
+                    StartNodeId = n,
+                    AttributeId = Attributes.Value,
+                    MonitoringMode = MonitoringMode.Reporting,
+                    SamplingInterval = TimeSpan.FromMilliseconds(sampingInteral),
+                    QueueSize = 0,
+                    DiscardOldest = true,
+                };
+                CreateSubscription();
+
+                if (_subscription.MonitoredItems.TryAdd(node, new Opc.Ua.OptionsMonitor<MonitoredItemOptions>(options),
+                        out IMonitoredItem monitoredItem))
+                {
+                    return Task.FromResult(true);
+                }
+
+                return Task.FromResult(false);
+            });
+
+
 
         public async Task StopAsync(CancellationToken cancellationToken = default)
         {
@@ -91,6 +127,23 @@ namespace CHD.OPCUA.Client
                 return func(cachedNode.InnerNodeId);
             }
             throw new Exception($"Konten {node} nicht gefunden!");
+        }
+
+        private void CreateSubscription()
+        {
+            if (_subscription is null && _session.TryGetSubscriptionManager(out var manager))
+            {
+                subscriptionNotificationHandler.DataChangeCallback = NotifyMonitoredItemAsync;
+                _subscription = manager.Add(subscriptionNotificationHandler, subscritptionsOptionsMonitor);
+            }
+        }
+
+        private async ValueTask NotifyMonitoredItemAsync(ISubscription subscription, uint seqNr, DateTime publishTime, DataValueChange[] changes)
+        {
+            foreach (var change in changes)
+            {
+                await MonitoredItemNotification?.Invoke(this, new MonitoredItemEventArgs(change.MonitoredItem.Name, change.Value.GetValue(), publishTime));
+            }
         }
 
         private async Task BrowseNodeAsync(NodeId? parentId, CancellationToken cancellationToken)
@@ -367,8 +420,6 @@ namespace CHD.OPCUA.Client
 
         private void OnConnectionStateChanged(object sender, ConnectionStateChangedEventArgs e)
         {
-            // the event may be raised by the session or by the connection state machine
-            // behind it, so only a sender which is a session is worth comparing.
             if (_session is null || (sender is ISession sessionOfEvent && !ReferenceEquals(sessionOfEvent, _session)))
             {
                 return;
@@ -397,77 +448,17 @@ namespace CHD.OPCUA.Client
             }
         }
 
-        private Variant ChangeType(DataValue value, object newValue)
-        {
-            switch (value.WrappedValue.TypeInfo.BuiltInType)
-            {
-                case BuiltInType.Boolean:
-                {
-                    return Variant.From(Convert.ToBoolean(newValue));
-                }
-
-                case BuiltInType.SByte:
-                {
-                    return Variant.From(Convert.ToSByte(newValue));
-                }
-
-                case BuiltInType.Byte:
-                {
-                    return Variant.From(Convert.ToByte(newValue));
-                }
-
-                case BuiltInType.Int16:
-                {
-                    return Variant.From(Convert.ToInt16(newValue));
-                }
-
-                case BuiltInType.UInt16:
-                {
-                    return Variant.From(Convert.ToUInt16(newValue));
-                }
-
-                case BuiltInType.Int32:
-                {
-                    return Variant.From(Convert.ToInt32(newValue));
-                }
-
-                case BuiltInType.UInt32:
-                {
-                    return Variant.From(Convert.ToUInt32(newValue));
-                }
-
-                case BuiltInType.Int64:
-                {
-                    return Variant.From(Convert.ToInt64(newValue));
-                }
-
-                case BuiltInType.UInt64:
-                {
-                    return Variant.From(Convert.ToUInt64(newValue));
-                }
-
-                case BuiltInType.Float:
-                {
-                    return Variant.From(Convert.ToSingle(newValue));
-                }
-
-                case BuiltInType.Double:
-                {
-                    return Variant.From(Convert.ToDouble(newValue));
-                }
-
-                default:
-                {
-                    return Variant.From(newValue.ToString());
-                }
-            }
-        }
-
         private void _session_KeepAlive(ISession session, KeepAliveEventArgs e)
         {
             logger?.LogTrace($"Session changed to {e.CurrentState}");
         }
 
-
+        public async ValueTask DisposeAsync()
+        {
+            subscriptionNotificationHandler.DataChangeCallback = null;
+            subscriptionNotificationHandler.EventCallback = null;
+            subscriptionNotificationHandler.KeepAliveCallback = null;
+            subscriptionNotificationHandler.StateChangedCallback = null;
+        }
     }
 }
