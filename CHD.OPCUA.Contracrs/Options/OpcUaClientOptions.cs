@@ -12,5 +12,6 @@ namespace chd.OpcUa.Contracts.Options
         public string Username { get; set; }
         public string Password { get; set; }
         public bool UseCertificate { get; set; }
+        public string[] StartNodes { get; set; }
     }
 }
