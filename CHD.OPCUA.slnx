@@ -1,5 +1,5 @@
 <Solution>
-  <Project Path="CHD.OPCUA.Client/CHD.OPCUA.Client.csproj" />
-  <Project Path="CHD.OPCUA.Contracrs/CHD.OPCUA.Contracts.csproj" />
-  <Project Path="CHD.OPCUA.Worker/CHD.OPCUA.Worker.csproj" />
+  <Project Path="chd.OpcUa.Client/chd.OpcUa.Client.csproj" />
+  <Project Path="chd.OpcUa.Contracrs/chd.OpcUa.Contracts.csproj" />
+  <Project Path="chd.OpcUa.Worker/chd.OpcUa.Worker.csproj" />
 </Solution>

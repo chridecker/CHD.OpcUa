@@ -2,10 +2,10 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using CHD.OPCUA.Contracts;
+using chd.OpcUa.Contracts;
 using Microsoft.Extensions.Logging;
 
-namespace CHD.OPCUA.Client
+namespace chd.OpcUa.Client
 {
     public class NotificationHandler : ISubscriptionNotificationHandler
     {

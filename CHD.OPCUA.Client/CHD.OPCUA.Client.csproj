@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\CHD.OPCUA.Contracrs\CHD.OPCUA.Contracts.csproj" />
+    <ProjectReference Include="..\chd.OpcUa.Contracrs\chd.OpcUa.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

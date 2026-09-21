@@ -4,9 +4,9 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CHD.OPCUA.Contracts.Interfaces
+namespace chd.OpcUa.Contracts.Interfaces
 {
-    public interface IOpcUAClient : IReadClient, IWriteClient, INotifiyItemClient, IAsyncDisposable
+    public interface IOpcUAClient : IReadClient, IWriteClient, INotifyItemClient, IAsyncDisposable
     {
        Task StartAsync(CancellationToken cancellationToken);
        Task StopAsync(CancellationToken cancellationToken);

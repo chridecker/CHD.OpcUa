@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CHD.OPCUA.Contracts
+namespace chd.OpcUa.Contracts
 {
     public class MonitoredItemEventArgs : EventArgs
     {

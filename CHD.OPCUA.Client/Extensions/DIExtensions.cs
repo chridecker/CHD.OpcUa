@@ -1,13 +1,13 @@
-﻿using CHD.OPCUA.Contracts.Interfaces;
+﻿using chd.OpcUa.Contracts.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Text;
-using CHD.OPCUA.Contracts.Options;
+using chd.OpcUa.Contracts.Options;
 using Opc.Ua.Client.Subscriptions;
 
-namespace CHD.OPCUA.Client.Extensions
+namespace chd.OpcUa.Client.Extensions
 {
     public static class DIExtensions
     {

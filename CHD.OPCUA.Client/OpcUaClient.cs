@@ -1,6 +1,6 @@
-﻿using CHD.OPCUA.Contracts;
-using CHD.OPCUA.Contracts.Interfaces;
-using CHD.OPCUA.Contracts.Options;
+﻿using chd.OpcUa.Contracts;
+using chd.OpcUa.Contracts.Interfaces;
+using chd.OpcUa.Contracts.Options;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -15,11 +15,11 @@ using System.Net;
 using System.Security.Principal;
 using System.Text.Unicode;
 using System.Xml.Linq;
-using CHD.OPCUA.Client.Extensions;
+using chd.OpcUa.Client.Extensions;
 using SubscriptionOptions = Opc.Ua.Client.Subscriptions.SubscriptionOptions;
 using MonitoredItemOptions = Opc.Ua.Client.Subscriptions.MonitoredItems.MonitoredItemOptions;
 
-namespace CHD.OPCUA.Client
+namespace chd.OpcUa.Client
 {
     public class OpcUaClient(ILogger<OpcUaClient> logger,
         NotificationHandler subscriptionNotificationHandler,
@@ -96,16 +96,24 @@ namespace CHD.OPCUA.Client
                 if (_subscription.MonitoredItems.TryAdd(node, new Opc.Ua.OptionsMonitor<MonitoredItemOptions>(options),
                         out IMonitoredItem monitoredItem))
                 {
-                    return Task.FromResult(true);
+                    return Task.FromResult(StatusCode.IsGood(monitoredItem.Error.StatusCode));
                 }
 
                 return Task.FromResult(false);
             });
 
+        public bool RemoveMonitorItem(string node)
+            => _subscription.MonitoredItems.TryGetMonitoredItemByName(node, out var item)
+               && _subscription.MonitoredItems.TryRemove(item.ClientHandle);
 
 
         public async Task StopAsync(CancellationToken cancellationToken = default)
         {
+            if (_subscription is not null)
+            {
+                await _subscription.DisposeAsync();
+            }
+
             if (_session is null)
             {
                 return;
@@ -117,6 +125,8 @@ namespace CHD.OPCUA.Client
             }
 
             _ = await _session.CloseAsync(cancellationToken);
+            _nodes.Clear();
+            _methods.Clear();
         }
 
         private Task<T> ExecuteForNode<T>(string node, Func<NodeId, Task<T>> func)

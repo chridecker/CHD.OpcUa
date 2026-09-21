@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace CHD.OPCUA.Contracts.Options
+namespace chd.OpcUa.Contracts.Options
 {
     public class OpcUaClientOptions
     {

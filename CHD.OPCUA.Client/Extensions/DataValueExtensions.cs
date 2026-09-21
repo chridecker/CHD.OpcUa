@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using Opc.Ua;
 
-namespace CHD.OPCUA.Client.Extensions
+namespace chd.OpcUa.Client.Extensions
 {
     public static class DataValueExtensions
     {
