@@ -6,11 +6,13 @@ using System.Threading.Tasks;
 
 namespace CHD.OPCUA.Contracts.Interfaces
 {
-    public interface IOpcUAClient
+    public interface IOpcUAClient : IReadClient, IWriteClient
     {
        event EventHandler<MonitoredItemEventArgs> MonitoredItemNotification;
        Task StartAsync(CancellationToken cancellationToken);
        Task StopAsync(CancellationToken cancellationToken);
        bool IsConnected { get; }
+
+
     }
 }

@@ -10,6 +10,11 @@ namespace CHD.OPCUA.Worker
             await client.StartAsync(stoppingToken);
             while (!stoppingToken.IsCancellationRequested)
             {
+                
+                var val = await client.ReadAsync<float>("1:CC1001?Input1", stoppingToken);
+
+                await client.WriteAsync("1:CC1001?Input1", ++val, stoppingToken);
+
                 if (logger.IsEnabled(LogLevel.Information))
                 {
                     logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
@@ -21,7 +26,7 @@ namespace CHD.OPCUA.Worker
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
             await client.StopAsync(cancellationToken);
-            await  base.StopAsync(cancellationToken);
+            await base.StopAsync(cancellationToken);
         }
     }
 }
