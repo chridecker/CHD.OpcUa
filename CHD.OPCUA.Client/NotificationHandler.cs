@@ -14,7 +14,7 @@ namespace chd.OpcUa.Client
         /// <summary>
         /// Called for every event notification.
         /// </summary>
-        public Func<ISubscription, uint, DateTime, EventNotification[], PublishState, ValueTask> EventCallback { get; set; }
+        public Func<ISubscription, uint, DateTime, EventNotification[], ValueTask> EventCallback { get; set; }
 
         /// <summary>
         /// Called for every keep alive notification.
@@ -47,8 +47,7 @@ namespace chd.OpcUa.Client
             ReadOnlyMemory<EventNotification> notifications,
             PublishState publishStateMask,
             IReadOnlyList<string> stringTable)
-            => EventCallback?.Invoke(subscription, sequenceNumber, publishTime, notifications.ToArray(),
-                publishStateMask) ?? ValueTask.CompletedTask;
+            => EventCallback?.Invoke(subscription, sequenceNumber, publishTime, notifications.ToArray()) ?? ValueTask.CompletedTask;
 
         /// <inheritdoc/>
         ValueTask ISubscriptionNotificationHandler.OnKeepAliveNotificationAsync(

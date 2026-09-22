@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace chd.OpcUa.Contracts.Interfaces
 {
-    public interface IOpcUAClient : IReadClient, IWriteClient, INotifyItemClient, ICallMethodClient, IAsyncDisposable
+    public interface IOpcUAClient : IReadClient, IWriteClient, INotifyItemClient, ICallMethodClient, IEventAlarmClient, IAsyncDisposable
     {
         Task StartAsync(CancellationToken cancellationToken);
         Task StopAsync(CancellationToken cancellationToken);

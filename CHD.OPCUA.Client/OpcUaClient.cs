@@ -1,4 +1,5 @@
-﻿using chd.OpcUa.Contracts;
+﻿using chd.OpcUa.Client.Extensions;
+using chd.OpcUa.Contracts;
 using chd.OpcUa.Contracts.Interfaces;
 using chd.OpcUa.Contracts.Options;
 using Microsoft.Extensions.Configuration;
@@ -10,495 +11,498 @@ using Opc.Ua.Client.ComplexTypes;
 using Opc.Ua.Client.Subscriptions;
 using Opc.Ua.Client.Subscriptions.MonitoredItems;
 using Opc.Ua.Configuration;
+using Opc.Ua.Schema.Types;
 using System.Diagnostics;
 using System.Net;
 using System.Security.Principal;
 using System.Text.Unicode;
+using System.Threading.Channels;
 using System.Xml.Linq;
-using chd.OpcUa.Client.Extensions;
-using SubscriptionOptions = Opc.Ua.Client.Subscriptions.SubscriptionOptions;
+using static System.Collections.Specialized.BitVector32;
 using MonitoredItemOptions = Opc.Ua.Client.Subscriptions.MonitoredItems.MonitoredItemOptions;
+using SubscriptionOptions = Opc.Ua.Client.Subscriptions.SubscriptionOptions;
 
 namespace chd.OpcUa.Client
 {
-	public class OpcUaClient(ILogger<OpcUaClient> logger,
-		NotificationHandler subscriptionNotificationHandler,
-		IOptionsMonitor<Contracts.Options.OpcUaClientOptions> optionsMonitor,
-		IOptionsMonitor<SubscriptionOptions> subscritptionsOptionsMonitor) : IOpcUAClient
-	{
-		private Contracts.Options.OpcUaClientOptions _options => optionsMonitor.CurrentValue;
-		private ITelemetryContext _telemetryContext = DefaultTelemetry.Create(c => c.SetMinimumLevel(LogLevel.Trace));
-		private ApplicationInstance? _instance;
-		private ApplicationConfiguration? _configuration => _instance.ApplicationConfiguration;
+    public class OpcUaClient(ILogger<OpcUaClient> logger,
+        NotificationHandler subscriptionNotificationHandler,
+        IOptionsMonitor<Contracts.Options.OpcUaClientOptions> optionsMonitor,
+        IOptionsMonitor<SubscriptionOptions> subscritptionsOptionsMonitor) : IOpcUAClient
+    {
+        private Contracts.Options.OpcUaClientOptions _options => optionsMonitor.CurrentValue;
+        private ITelemetryContext _telemetryContext = DefaultTelemetry.Create(c => c.SetMinimumLevel(LogLevel.Trace));
+        private ApplicationInstance? _instance;
+        private ApplicationConfiguration? _configuration => _instance.ApplicationConfiguration;
 
-		private List<NodeDto> _nodes = [];
-		private List<NodeDto> _methods = [];
+        private List<NodeDto> _nodes = [];
+        private List<NodeDto> _methods = [];
 
-		private ISession _session;
+        private Dictionary<uint, EventFilter> _filtersByHandle = [];
+        private Dictionary<uint, ConditionState> _conditionStates = [];
 
-		private ISubscription _subscription;
+        private ISession _session;
 
+        private ISubscription _monitoredItemSubscription;
+        private ISubscription _eventsSubscription;
 
-		public bool IsConnected => _session is not null && _session.Connected;
+        private Channel<EventNotification> _eventChannel =
+            Channel.CreateUnbounded<EventNotification>(new UnboundedChannelOptions
+            { SingleReader = true, SingleWriter = false });
 
-		public event AsyncEventHandler<MonitoredItemEventArgs> MonitoredItemNotification;
+        private Task _channelConsumer;
 
-		public async Task StartAsync(CancellationToken cancellationToken = default)
-		{
-			var timeout = (int?)_options.Timeout?.TotalMilliseconds ?? 60000;
-			await InitializeApplicationInstance(cancellationToken);
+        public bool IsConnected => _session is not null && _session.Connected;
 
-			var identity = GetIdentity();
+        public event AsyncEventHandler<MonitoredItemEventArgs> MonitoredItemNotification;
+        public event AsyncEventHandler<EventAlarmEventArgs> EventAlarmNotification;
 
-			var endpoint = await GetEndpointAsync(identity, cancellationToken);
+        public async Task StartAsync(CancellationToken cancellationToken = default)
+        {
+            var timeout = (int?)_options.Timeout?.TotalMilliseconds ?? 60000;
+            await InitializeApplicationInstance(cancellationToken);
 
-			await CreateSessionAsync(endpoint, timeout, identity, cancellationToken);
-			if (_options.StartNodes.Any())
-			{
-				foreach (var startNode in _options.StartNodes)
-				{
-					await BrowseNodeAsync(NodeId.Parse(null, startNode), cancellationToken);
-				}
-			}
-			else
-			{
-				await BrowseNodeAsync(ObjectIds.ObjectsFolder, cancellationToken);
-			}
-		}
+            var identity = GetIdentity();
 
-		public Task<T> ReadAsync<T>(string node, CancellationToken cancellationToken)
-			=> ExecuteForNode(node, (n) => _session.ReadValueAsync<T>(n, cancellationToken));
+            var endpoint = await GetEndpointAsync(identity, cancellationToken);
 
-		public Task<bool> WriteAsync<T>(string node, T value, CancellationToken cancellationToken)
-			=> ExecuteForNode(node, async (n) =>
-			{
-				var nodesToRead = new List<ReadValueId> {
-					new ReadValueId { NodeId = n, AttributeId = Attributes.Value },
-				};
+            await CreateSessionAsync(endpoint, timeout, identity, cancellationToken);
+            if (_options.StartNodes?.Any() ?? false)
+            {
+                foreach (var startNode in _options.StartNodes)
+                {
+                    await BrowseNodeAsync(NodeId.Parse(null, startNode), cancellationToken);
+                }
+            }
+            else
+            {
+                await BrowseNodeAsync(ObjectIds.ObjectsFolder, cancellationToken);
+            }
+        }
 
-				var results = await _session.ReadAsync(null, 0, TimestampsToReturn.Neither, nodesToRead, cancellationToken);
-				var dataValue = results.Results[0];
-				var writeValue = new WriteValue()
-				{
-					NodeId = n,
-					AttributeId = Attributes.Value,
-					Value = new DataValue(dataValue.ChangeType(value), StatusCodes.Good, DateTime.MinValue, DateTime.MinValue)
-				};
-				var res = await _session.WriteAsync(null, new[] { writeValue }, cancellationToken);
-				return res.Results.ToList().All(a => StatusCode.IsGood(a));
-			});
+        public Task<T> ReadAsync<T>(string node, CancellationToken cancellationToken)
+            => ExecuteForNode(node, (n) => _session.ReadValueAsync<T>(n, cancellationToken));
 
-		public Task<bool> MonitorItem(string node, int sampingInteral = 500, CancellationToken cancellationToken = default)
-			=> ExecuteForNode<bool>(node, n =>
-			{
-				var options = new MonitoredItemOptions
-				{
-					StartNodeId = n,
-					AttributeId = Attributes.Value,
-					MonitoringMode = MonitoringMode.Reporting,
-					SamplingInterval = TimeSpan.FromMilliseconds(sampingInteral),
-					QueueSize = 0,
-					DiscardOldest = true,
-				};
-				CreateSubscription();
+        public Task<bool> WriteAsync<T>(string node, T value, CancellationToken cancellationToken)
+            => ExecuteForNode(node, async (n) =>
+            {
+                var nodesToRead = new List<ReadValueId> {
+                    new ReadValueId { NodeId = n, AttributeId = Attributes.Value },
+                };
 
-				if (_subscription.MonitoredItems.TryAdd(node, new Opc.Ua.OptionsMonitor<MonitoredItemOptions>(options),
-						out IMonitoredItem monitoredItem))
-				{
-					return Task.FromResult(StatusCode.IsGood(monitoredItem.Error.StatusCode));
-				}
+                var results = await _session.ReadAsync(null, 0, TimestampsToReturn.Neither, nodesToRead, cancellationToken);
+                var dataValue = results.Results[0];
+                var writeValue = new WriteValue()
+                {
+                    NodeId = n,
+                    AttributeId = Attributes.Value,
+                    Value = new DataValue(dataValue.ChangeType(value), StatusCodes.Good, DateTime.MinValue, DateTime.MinValue)
+                };
+                var res = await _session.WriteAsync(null, new[] { writeValue }, cancellationToken);
+                return res.Results.ToList().All(a => StatusCode.IsGood(a));
+            });
 
-				return Task.FromResult(false);
-			});
+        public Task<bool> MonitorItem(string node, int sampingInteral = 500, CancellationToken cancellationToken = default)
+            => ExecuteForNode<bool>(node, n =>
+            {
+                var options = new MonitoredItemOptions
+                {
+                    StartNodeId = n,
+                    AttributeId = Attributes.Value,
+                    MonitoringMode = MonitoringMode.Reporting,
+                    SamplingInterval = TimeSpan.FromMilliseconds(sampingInteral),
+                    QueueSize = 0,
+                    DiscardOldest = true,
+                };
+                CreateSubscription();
 
-		public bool RemoveMonitorItem(string node)
-			=> _subscription.MonitoredItems.TryGetMonitoredItemByName(node, out var item)
-			   && _subscription.MonitoredItems.TryRemove(item.ClientHandle);
+                if (_monitoredItemSubscription.MonitoredItems.TryAdd(node, new Opc.Ua.OptionsMonitor<MonitoredItemOptions>(options),
+                        out IMonitoredItem monitoredItem))
+                {
+                    return Task.FromResult(StatusCode.IsGood(monitoredItem.Error.StatusCode));
+                }
 
-		public async Task<IEnumerable<object>> CallMethod(string method, CancellationToken cancellationToken = default, params object[] inputs)
-		{
-			var response = await CallMethod(method, inputs, cancellationToken);
-			return response.ToList().Select(s => s.GetValue());
-		}
+                return Task.FromResult(false);
+            });
 
-		public async Task<TOutput> CallMethod<TInput, TOutput>(string method, TInput input, CancellationToken cancellationToken = default)
-		where TInput : struct
-		where TOutput : struct
-		{
+        public Task<bool> AttachToEventsAsync(string node, CancellationToken cancellationToken = default)
+            => ExecuteForNode<bool>(node, async n =>
+            {
+                CreateEventsSubscription(cancellationToken);
+
+                var selecClauses = await _session.ConstructSelectClausesAsync(cancellationToken, n,
+                    ObjectTypeIds.DialogConditionType,
+                    ObjectTypeIds.ExclusiveLimitAlarmType,
+                    ObjectTypeIds.NonExclusiveLimitAlarmType);
+
+                var options = new MonitoredItemOptions
+                {
+                    StartNodeId = n,
+                    AttributeId = Attributes.EventNotifier,
+                    MonitoringMode = MonitoringMode.Reporting,
+                    SamplingInterval = TimeSpan.Zero,
+                    QueueSize = UInt32.MaxValue,
+                    DiscardOldest = true,
+                    Filter = selecClauses.ConstructFilter(),
+                };
+
+                if (_eventsSubscription.MonitoredItems.TryAdd(node, new Opc.Ua.OptionsMonitor<MonitoredItemOptions>(options),
+                        out IMonitoredItem monitoredItem))
+                {
+                    _filtersByHandle[monitoredItem.ClientHandle] = (EventFilter)options.Filter;
+                    return true;
+                }
+                return false;
+            }, NodeClass.Object);
+
+        public async Task AcknowledgeAsync(uint handle, ReadOnlyMemory<byte> eventId, string comment, CancellationToken cancellationToken)
+        {
+            if (!_conditionStates.TryGetValue(handle, out var condition))
+            {
+                return;
+            }
+
+            var client = new AcknowledgeableConditionTypeClient(_session, condition.NodeId, _telemetryContext);
+            await client.AcknowledgeAsync(new ByteString(eventId),
+                new LocalizedText(comment), cancellationToken);
+        }
+
+        public async Task AddCommentAsync(uint handle, ReadOnlyMemory<byte> eventId, string comment, CancellationToken cancellationToken)
+        {
+            if (!_conditionStates.TryGetValue(handle, out var condition))
+            {
+                return;
+            }
+
+            var client = new AcknowledgeableConditionTypeClient(_session, condition.NodeId, _telemetryContext);
+            await client.AddCommentAsync(new ByteString(eventId),
+                new LocalizedText(comment), cancellationToken);
+        }
+
+        public async Task ConfirmAsync(uint handle, ReadOnlyMemory<byte> eventId, string comment, CancellationToken cancellationToken)
+        {
+            if (!_conditionStates.TryGetValue(handle, out var condition))
+            {
+                return;
+            }
+
+            var client = new AcknowledgeableConditionTypeClient(_session, condition.NodeId, _telemetryContext);
+            await client.ConfirmAsync(new ByteString(eventId),
+                new LocalizedText(comment), cancellationToken);
+        }
+
+        public bool RemoveMonitorItem(string node)
+            => _monitoredItemSubscription.MonitoredItems.TryGetMonitoredItemByName(node, out var item)
+               && _monitoredItemSubscription.MonitoredItems.TryRemove(item.ClientHandle);
+
+        public async Task<IEnumerable<object>> CallMethod(string method, CancellationToken cancellationToken = default, params object[] inputs)
+        {
+            var response = await CallMethod(method, inputs, cancellationToken);
+            return response.ToList().Select(s => s.GetValue());
+        }
+
+        public async Task<TOutput> CallMethod<TInput, TOutput>(string method, TInput input, CancellationToken cancellationToken = default)
+        where TInput : struct
+        where TOutput : struct
+        {
             var response = await CallMethod(method, input.ToInputArray(), cancellationToken);
             return response.ToList().Select(s => s.GetValue()).ToOuputData<TOutput>();
         }
 
-		private Task<ArrayOf<Variant>> CallMethod(string method, object[] inputs, CancellationToken cancellationToken)
-		{
-			if (this._methods.All(a => a.Identifier != method))
-			{
-				throw new Exception($"Konnte die Methode {method} nicht finden");
-			}
+        private Task<ArrayOf<Variant>> CallMethod(string method, object[] inputs, CancellationToken cancellationToken)
+        {
+            if (this._methods.All(a => a.Identifier != method))
+            {
+                throw new Exception($"Konnte die Methode {method} nicht finden");
+            }
 
-			var dto = this._methods.FirstOrDefault(x => x.Identifier == method);
-			return this._session.CallAsync(dto.ParentNodeId, dto.Node.InnerNodeId, cancellationToken, inputs.Select(s => new Variant(s)).ToArray());
-		}
+            var dto = this._methods.FirstOrDefault(x => x.Identifier == method);
+            return this._session.CallAsync(dto.ParentNodeId, dto.Node.InnerNodeId, cancellationToken, inputs.Select(s => new Variant(s)).ToArray());
+        }
 
-		public async Task StopAsync(CancellationToken cancellationToken = default)
-		{
-			if (_subscription is not null)
-			{
-				await _subscription.DisposeAsync();
-			}
+        public async Task StopAsync(CancellationToken cancellationToken = default)
+        {
+            if (_monitoredItemSubscription is not null)
+            {
+                await _monitoredItemSubscription.DisposeAsync();
+            }
 
-			if (_session is null)
-			{
-				return;
-			}
-			_session.KeepAlive -= _session_KeepAlive;
-			if (_session is ManagedSession managedSession)
-			{
-				managedSession.ConnectionStateChanged -= OnConnectionStateChanged;
-			}
+            if (_session is null)
+            {
+                return;
+            }
+            _session.KeepAlive -= _session_KeepAlive;
+            if (_session is ManagedSession managedSession)
+            {
+                managedSession.ConnectionStateChanged -= OnConnectionStateChanged;
+            }
 
-			_ = await _session.CloseAsync(cancellationToken);
-			_nodes.Clear();
-			_methods.Clear();
-		}
+            _ = await _session.CloseAsync(cancellationToken);
+            _nodes.Clear();
+            _methods.Clear();
+        }
 
 
-		private Task<T> ExecuteForNode<T>(string node, Func<NodeId, Task<T>> func)
-		{
-			if (_nodes.Any(a => a.Identifier == node))
-			{
-				var cachedNode = _nodes.FirstOrDefault(a => a.Identifier == node);
-				return func(cachedNode.Node.InnerNodeId);
-			}
-			throw new Exception($"Konten {node} nicht gefunden!");
-		}
+        private Task<T> ExecuteForNode<T>(string node, Func<NodeId, Task<T>> func, NodeClass nodeClass = NodeClass.Variable)
+        {
+            if (_nodes.Any(a => a.Identifier == node && a.Description.NodeClass == nodeClass))
+            {
+                var cachedNode = _nodes.FirstOrDefault(a => a.Identifier == node);
+                return func(cachedNode.Node.InnerNodeId);
+            }
+            throw new Exception($"Konten {node} nicht gefunden!");
+        }
 
-		private void CreateSubscription()
-		{
-			if (_subscription is null && _session.TryGetSubscriptionManager(out var manager))
-			{
-				subscriptionNotificationHandler.DataChangeCallback = NotifyMonitoredItemAsync;
-				_subscription = manager.Add(subscriptionNotificationHandler, subscritptionsOptionsMonitor);
-			}
-		}
+        private void CreateSubscription()
+        {
+            if (_monitoredItemSubscription is null && _session.TryGetSubscriptionManager(out var manager))
+            {
+                subscriptionNotificationHandler.DataChangeCallback = NotifyMonitoredItemAsync;
+                _monitoredItemSubscription = manager.Add(subscriptionNotificationHandler, subscritptionsOptionsMonitor);
+            }
+        }
 
-		private async ValueTask NotifyMonitoredItemAsync(ISubscription subscription, uint seqNr, DateTime publishTime, DataValueChange[] changes)
-		{
-			foreach (var change in changes)
-			{
-				await MonitoredItemNotification?.Invoke(this, new MonitoredItemEventArgs(change.MonitoredItem.Name, change.Value.GetValue(), publishTime));
-			}
-		}
+        private void CreateEventsSubscription(CancellationToken cancellationToken)
+        {
+            if (_eventsSubscription is null && _session.TryGetSubscriptionManager(out var manager))
+            {
+                subscriptionNotificationHandler.EventCallback = RaiseEventsAsync;
+                _eventsSubscription = manager.Add(subscriptionNotificationHandler, subscritptionsOptionsMonitor);
+            }
 
-		private async Task BrowseNodeAsync(NodeId? parentId, CancellationToken cancellationToken)
-		{
-			parentId ??= ObjectIds.ObjectsFolder;
-			var nodesToBrowse = new List<BrowseDescription> {
+            if (_channelConsumer is null)
+            {
+                _channelConsumer = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await foreach (var notification in _eventChannel.Reader.ReadAllAsync(cancellationToken)
+                                           .ConfigureAwait(false))
+                        {
+                            var args = await _session.ProcessNotificationAsync(_conditionStates, _filtersByHandle, notification, cancellationToken);
+                            if (args is not null)
+                            {
+                                await this.EventAlarmNotification?.Invoke(this, args);
+                            }
+                        }
+                    }
+                    catch { }
+                }, cancellationToken);
+            }
+        }
+
+        private async ValueTask NotifyMonitoredItemAsync(ISubscription subscription, uint seqNr, DateTime publishTime, DataValueChange[] changes)
+        {
+            foreach (var change in changes)
+            {
+                await MonitoredItemNotification?.Invoke(this, new MonitoredItemEventArgs(change.MonitoredItem.Name, change.Value.GetValue(), publishTime));
+            }
+        }
+
+        private async ValueTask RaiseEventsAsync(ISubscription subscription, uint seqNr, DateTime publishTime, EventNotification[] events)
+        {
+            foreach (var eventAlarm in events)
+            {
+                await _eventChannel.Writer.WriteAsync(eventAlarm);
+            }
+        }
+
+
+
+
+        private async Task BrowseNodeAsync(NodeId? parentId, CancellationToken cancellationToken)
+        {
+            parentId ??= ObjectIds.ObjectsFolder;
+            var nodesToBrowse = new List<BrowseDescription> {
                     // the components of the node.
                     new BrowseDescription {
-						NodeId = parentId.Value,
-						BrowseDirection = BrowseDirection.Forward,
-						ReferenceTypeId = ReferenceTypeIds.Aggregates,
-						IncludeSubtypes = true,
-						NodeClassMask = (uint)(NodeClass.Object | NodeClass.Variable | NodeClass.Method),
-						ResultMask = (uint)BrowseResultMask.All,
-					},
+                        NodeId = parentId.Value,
+                        BrowseDirection = BrowseDirection.Forward,
+                        ReferenceTypeId = ReferenceTypeIds.Aggregates,
+                        IncludeSubtypes = true,
+                        NodeClassMask = (uint)(NodeClass.Object | NodeClass.Variable | NodeClass.Method),
+                        ResultMask = (uint)BrowseResultMask.All,
+                    },
                     // the nodes organized by the node.
                     new BrowseDescription {
-						NodeId = parentId.Value,
-						BrowseDirection = BrowseDirection.Forward,
-						ReferenceTypeId = ReferenceTypeIds.Organizes,
-						IncludeSubtypes = true,
-						NodeClassMask = (uint)(NodeClass.Object | NodeClass.Variable | NodeClass.Method),
-						ResultMask = (uint)BrowseResultMask.All,
-					},
-				};
-			foreach (var child in await BrowseAsync(nodesToBrowse, cancellationToken))
-			{
-				switch (child.NodeClass)
-				{
-					case NodeClass.Method:
-						_methods.Add(new(child, parentId.Value));
-						break;
-					case NodeClass.Variable:
-						_nodes.Add(new(child, parentId.Value));
-						break;
-					default:
-						await BrowseNodeAsync(child.NodeId.InnerNodeId, cancellationToken);
-						break;
-				}
-			}
-		}
+                        NodeId = parentId.Value,
+                        BrowseDirection = BrowseDirection.Forward,
+                        ReferenceTypeId = ReferenceTypeIds.Organizes,
+                        IncludeSubtypes = true,
+                        NodeClassMask = (uint)(NodeClass.Object | NodeClass.Variable | NodeClass.Method),
+                        ResultMask = (uint)BrowseResultMask.All,
+                    },
+                };
+            foreach (var child in await _session.BrowseAsync(nodesToBrowse, cancellationToken))
+            {
+                switch (child.NodeClass)
+                {
+                    case NodeClass.Method:
+                        _methods.Add(new(child, parentId.Value));
+                        break;
+                    default:
+                        _nodes.Add(new(child, parentId.Value));
+                        await BrowseNodeAsync(child.NodeId.InnerNodeId, cancellationToken);
+                        break;
+                }
+            }
+        }
 
 
-		private async Task<List<ReferenceDescription>> BrowseAsync(IReadOnlyList<BrowseDescription> nodesToBrowse, CancellationToken cancellationToken)
-		{
-			try
-			{
-				List<ReferenceDescription> references = new List<ReferenceDescription>();
-
-				while (nodesToBrowse.Count > 0)
-				{
-					// start the browse operation.
-					var response = await _session.BrowseAsync(
-						null,
-						null,
-						0,
-						nodesToBrowse.ToArrayOf(),
-						cancellationToken).ConfigureAwait(false);
-
-					var results = response.Results.ToList();
-					var diagnosticInfos = response.DiagnosticInfos.ToList();
-
-					ClientBase.ValidateResponse(results, nodesToBrowse);
-					ClientBase.ValidateDiagnosticInfos(diagnosticInfos, nodesToBrowse);
-
-					List<ByteString> continuationPoints = new List<ByteString>();
-					List<BrowseDescription> unprocessedOperations = new List<BrowseDescription>();
-
-					for (int ii = 0; ii < nodesToBrowse.Count; ii++)
-					{
-						// check for error.
-						if (StatusCode.IsBad(results[ii].StatusCode))
-						{
-							// this error indicates that the server does not have enough simultaneously active
-							// continuation points. This request will need to be resent after the other operations
-							// have been completed and their continuation points released.
-							if (results[ii].StatusCode == StatusCodes.BadNoContinuationPoints)
-							{
-								unprocessedOperations.Add(nodesToBrowse[ii]);
-							}
-
-							continue;
-						}
-
-						// check if all references have been fetched.
-						if (results[ii].References.Count == 0)
-						{
-							continue;
-						}
-
-						// save results.
-						references.AddRange(results[ii].References);
-
-						// check for continuation point.
-						if (!results[ii].ContinuationPoint.IsNull)
-						{
-							continuationPoints.Add(results[ii].ContinuationPoint);
-						}
-					}
-
-					// process continuation points.
-					while (continuationPoints.Count > 0)
-					{
-						// continue browse operation.
-						BrowseNextResponse response2 = await _session.BrowseNextAsync(
-							null,
-							false,
-							continuationPoints,
-							cancellationToken).ConfigureAwait(false);
-
-						results = response2.Results.ToList();
-						diagnosticInfos = response2.DiagnosticInfos.ToList();
-
-						ClientBase.ValidateResponse(results, continuationPoints);
-						ClientBase.ValidateDiagnosticInfos(diagnosticInfos, continuationPoints);
-
-						List<ByteString> revisedContinuationPoints = new List<ByteString>();
-						for (int ii = 0; ii < continuationPoints.Count; ii++)
-						{
-							// check for error.
-							if (StatusCode.IsBad(results[ii].StatusCode))
-							{
-								continue;
-							}
-
-							// check if all references have been fetched.
-							if (results[ii].References.Count == 0)
-							{
-								continue;
-							}
-
-							// save results.
-							references.AddRange(results[ii].References);
-
-							// check for continuation point.
-							if (!results[ii].ContinuationPoint.IsNull)
-							{
-								revisedContinuationPoints.Add(results[ii].ContinuationPoint);
-							}
-						}
-
-						// check if browsing must continue;
-						continuationPoints = revisedContinuationPoints;
-					}
-
-					// check if unprocessed results exist.
-					nodesToBrowse = unprocessedOperations;
-				}
-
-				// return complete list.
-				return references;
-			}
-			catch (Exception exception)
-			{
-				throw new ServiceResultException(exception, StatusCodes.BadUnexpectedError);
-			}
-		}
 
 
-		private async Task InitializeApplicationInstance(CancellationToken cancellationToken)
-		{
-			if (_instance is null)
-			{
-				_instance = new ApplicationInstance(_telemetryContext)
-				{
-					ApplicationType = ApplicationType.Client,
-					ApplicationName = _options.Name,
-				};
-				var configFile = new FileInfo("OpcUaClientConfig.xml");
-				if (!configFile.Exists)
-				{
-					throw new FileNotFoundException("Opc UA Client konnte nicht gefunden werden!", configFile.FullName);
-				}
-				_ = await _instance.LoadApplicationConfigurationAsync(configFile.FullName, false, cancellationToken);
 
-				if (await _instance.CheckApplicationInstanceCertificatesAsync(false, ct: cancellationToken))
-				{
-					_instance.CertificateManager.AutoAcceptUntrustedCertificates = true;
-				}
-			}
-		}
+        private async Task InitializeApplicationInstance(CancellationToken cancellationToken)
+        {
+            if (_instance is null)
+            {
+                _instance = new ApplicationInstance(_telemetryContext)
+                {
+                    ApplicationType = ApplicationType.Client,
+                    ApplicationName = _options.Name,
+                };
+                var configFile = new FileInfo("OpcUaClientConfig.xml");
+                if (!configFile.Exists)
+                {
+                    throw new FileNotFoundException("Opc UA Client konnte nicht gefunden werden!", configFile.FullName);
+                }
+                _ = await _instance.LoadApplicationConfigurationAsync(configFile.FullName, false, cancellationToken);
 
-		private IUserIdentity? GetIdentity()
-		{
-			IUserIdentity identity = null;
-			if (!string.IsNullOrWhiteSpace(_options.Username))
-			{
-				var pwBytes = new Span<byte>();
-				_ = Utf8.FromUtf16(_options.Password, pwBytes, out _, out _);
-				identity = new UserIdentity(_options.Username, pwBytes);
-			}
+                if (await _instance.CheckApplicationInstanceCertificatesAsync(false, ct: cancellationToken))
+                {
+                    _instance.CertificateManager.AutoAcceptUntrustedCertificates = true;
+                }
+            }
+        }
 
-			return identity;
-		}
+        private IUserIdentity? GetIdentity()
+        {
+            IUserIdentity identity = null;
+            if (!string.IsNullOrWhiteSpace(_options.Username))
+            {
+                var pwBytes = new Span<byte>();
+                _ = Utf8.FromUtf16(_options.Password, pwBytes, out _, out _);
+                identity = new UserIdentity(_options.Username, pwBytes);
+            }
 
-		private async Task CreateSessionAsync(ConfiguredEndpoint endpoint, int timeout, IUserIdentity identity, CancellationToken cancellationToken)
-		{
-			_session = await new ManagedSessionFactory(_telemetryContext).CreateAsync(
-				_configuration,
-				endpoint,
-				false,
-				true,
-				!string.IsNullOrWhiteSpace(_options.Name) ? _options.Name : nameof(OpcUaClient),
-				(uint)timeout,
-				identity ?? new UserIdentity(), new string[] { },
-				cancellationToken);
+            return identity;
+        }
 
-			_session.KeepAlive += _session_KeepAlive;
+        private async Task CreateSessionAsync(ConfiguredEndpoint endpoint, int timeout, IUserIdentity identity, CancellationToken cancellationToken)
+        {
+            _session = await new ManagedSessionFactory(_telemetryContext).CreateAsync(
+                _configuration,
+                endpoint,
+                false,
+                true,
+                !string.IsNullOrWhiteSpace(_options.Name) ? _options.Name : nameof(OpcUaClient),
+                (uint)timeout,
+                identity ?? new UserIdentity(), new string[] { },
+                cancellationToken);
 
-			if (_session is ManagedSession managedSession)
-			{
-				managedSession.ConnectionStateChanged += OnConnectionStateChanged;
-			}
+            _session.KeepAlive += _session_KeepAlive;
 
-			try
-			{
-				using var typeSystem = ComplexTypeSystemClientExtensions.Create(_session, _telemetryContext);
+            if (_session is ManagedSession managedSession)
+            {
+                managedSession.ConnectionStateChanged += OnConnectionStateChanged;
+            }
 
-				await typeSystem.LoadAsync(ct: cancellationToken).ConfigureAwait(false);
-			}
-			catch (Exception e)
-			{
-				// the session is usable without the custom types; a sample which needs them
-				// fails later, with an error which says which type is missing
-				logger?.LogWarning(e, "Failed to load complex type system.");
-			}
-		}
+            try
+            {
+                using var typeSystem = ComplexTypeSystemClientExtensions.Create(_session, _telemetryContext);
 
-		private async Task<ConfiguredEndpoint> GetEndpointAsync(IUserIdentity identity, CancellationToken cancellationToken)
-		{
-			var endpointConfiguration = EndpointConfiguration.Create(_configuration);
+                await typeSystem.LoadAsync(ct: cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                // the session is usable without the custom types; a sample which needs them
+                // fails later, with an error which says which type is missing
+                logger?.LogWarning(e, "Failed to load complex type system.");
+            }
+        }
 
-			var discoveryClient = await DiscoveryClient.CreateAsync(_configuration, new Uri(this._options.EndpointUrl),
-				endpointConfiguration, DiagnosticsMasks.All, cancellationToken);
+        private async Task<ConfiguredEndpoint> GetEndpointAsync(IUserIdentity identity, CancellationToken cancellationToken)
+        {
+            var endpointConfiguration = EndpointConfiguration.Create(_configuration);
 
-			EndpointDescription? selectedEndpoint = null;
+            var discoveryClient = await DiscoveryClient.CreateAsync(_configuration, new Uri(this._options.EndpointUrl),
+                endpointConfiguration, DiagnosticsMasks.All, cancellationToken);
 
-			foreach (var ep in (await discoveryClient.GetEndpointsAsync(new string[] { }, cancellationToken)).ToList())
-			{
-				if (identity is not null
-					&& _options.UseCertificate
-					&& ep.SecurityMode is MessageSecurityMode.SignAndEncrypt)
-				{
-					selectedEndpoint = ep;
-					break;
-				}
-				if (identity is not null
-					&& !_options.UseCertificate
-					&& ep.SecurityMode is MessageSecurityMode.Sign)
-				{
-					selectedEndpoint = ep;
-					break;
-				}
-				if (identity is null
-					&& !_options.UseCertificate
-					&& ep.SecurityMode is MessageSecurityMode.None)
-				{
-					selectedEndpoint = ep;
-					break;
-				}
-			}
+            EndpointDescription? selectedEndpoint = null;
 
-			if (selectedEndpoint is null)
-			{
-				throw new Exception($"Konnte keinen validen Endpoint auf {_options.EndpointUrl} finden!");
-			}
+            foreach (var ep in (await discoveryClient.GetEndpointsAsync(new string[] { }, cancellationToken)).ToList())
+            {
+                if (identity is not null
+                    && _options.UseCertificate
+                    && ep.SecurityMode is MessageSecurityMode.SignAndEncrypt)
+                {
+                    selectedEndpoint = ep;
+                    break;
+                }
+                if (identity is not null
+                    && !_options.UseCertificate
+                    && ep.SecurityMode is MessageSecurityMode.Sign)
+                {
+                    selectedEndpoint = ep;
+                    break;
+                }
+                if (identity is null
+                    && !_options.UseCertificate
+                    && ep.SecurityMode is MessageSecurityMode.None)
+                {
+                    selectedEndpoint = ep;
+                    break;
+                }
+            }
 
-			return new ConfiguredEndpoint(null, selectedEndpoint, endpointConfiguration);
-		}
+            if (selectedEndpoint is null)
+            {
+                throw new Exception($"Konnte keinen validen Endpoint auf {_options.EndpointUrl} finden!");
+            }
 
-		private void OnConnectionStateChanged(object sender, ConnectionStateChangedEventArgs e)
-		{
-			if (_session is null || (sender is ISession sessionOfEvent && !ReferenceEquals(sessionOfEvent, _session)))
-			{
-				return;
-			}
+            return new ConfiguredEndpoint(null, selectedEndpoint, endpointConfiguration);
+        }
 
-			switch (e.NewState)
-			{
-				case ConnectionState.Reconnecting:
-				case ConnectionState.Failover:
-					{
-						logger?.LogWarning($"Reconnecting (attempt {0})", e.ReconnectAttempt);
-						break;
-					}
+        private void OnConnectionStateChanged(object sender, ConnectionStateChangedEventArgs e)
+        {
+            if (_session is null || (sender is ISession sessionOfEvent && !ReferenceEquals(sessionOfEvent, _session)))
+            {
+                return;
+            }
 
-				case ConnectionState.Connected:
-					{
-						logger?.LogDebug($"Session Connected {_session.Endpoint.EndpointUrl}");
-						break;
-					}
+            switch (e.NewState)
+            {
+                case ConnectionState.Reconnecting:
+                case ConnectionState.Failover:
+                    {
+                        logger?.LogWarning($"Reconnecting (attempt {0})", e.ReconnectAttempt);
+                        break;
+                    }
 
-				case ConnectionState.Disconnected:
-					{
-						logger?.LogError($"Session Disconnected {e.Error}");
-						break;
-					}
-			}
-		}
+                case ConnectionState.Connected:
+                    {
+                        logger?.LogDebug($"Session Connected {_session.Endpoint.EndpointUrl}");
+                        break;
+                    }
 
-		private void _session_KeepAlive(ISession session, KeepAliveEventArgs e)
-		{
-			logger?.LogTrace($"Session changed to {e.CurrentState}");
-		}
+                case ConnectionState.Disconnected:
+                    {
+                        logger?.LogError($"Session Disconnected {e.Error}");
+                        break;
+                    }
+            }
+        }
 
-		public async ValueTask DisposeAsync()
-		{
-			subscriptionNotificationHandler.DataChangeCallback = null;
-			subscriptionNotificationHandler.EventCallback = null;
-			subscriptionNotificationHandler.KeepAliveCallback = null;
-			subscriptionNotificationHandler.StateChangedCallback = null;
-		}
-	}
+        private void _session_KeepAlive(ISession session, KeepAliveEventArgs e)
+        {
+            logger?.LogTrace($"Session changed to {e.CurrentState}");
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            subscriptionNotificationHandler.DataChangeCallback = null;
+            subscriptionNotificationHandler.EventCallback = null;
+            subscriptionNotificationHandler.KeepAliveCallback = null;
+            subscriptionNotificationHandler.StateChangedCallback = null;
+        }
+    }
 }

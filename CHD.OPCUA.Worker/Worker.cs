@@ -1,5 +1,6 @@
 using chd.OpcUa.Client;
 using chd.OpcUa.Contracts.Interfaces;
+using Opc.Ua;
 
 namespace chd.OpcUa.Worker
 {
@@ -8,15 +9,20 @@ namespace chd.OpcUa.Worker
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             client.MonitoredItemNotification += Client_MonitoredItemNotification;
+            client.EventAlarmNotification += Client_EventAlarmNotification; ;
             await client.StartAsync(stoppingToken);
+
+            await client.AttachToEventsAsync("Server", stoppingToken);
+
+
             //await client.MonitorItem("1:CC1001?Input1", 5000, stoppingToken);
             //await client.MonitorItem("1:CC1001?Input2", 5000, stoppingToken);
-            await client.MonitorItem("2:State", 500, stoppingToken);
-            var val = await client.ReadAsync<uint>("2:State", stoppingToken);
+            //await client.MonitorItem("2:State", 500, stoppingToken);
+            //var val = await client.ReadAsync<uint>("2:State", stoppingToken);
 
-            var input = new ProcessStartInput(val, val == 0 ? val + (uint)10 : 0);
+            //var input = new ProcessStartInput(val, val == 0 ? val + (uint)10 : 0);
 
-            var output = await client.CallMethod<ProcessStartInput, ProcessStartOutput>("2:Start", input, stoppingToken);
+            //var output = await client.CallMethod<ProcessStartInput, ProcessStartOutput>("2:Start", input, stoppingToken);
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -30,7 +36,35 @@ namespace chd.OpcUa.Worker
             }
         }
 
-        private async Task Client_MonitoredItemNotification(object? sender, Contracts.MonitoredItemEventArgs e)
+        private async Task Client_EventAlarmNotification(object? sender, Contracts.EventAlarmEventArgs e, CancellationToken cancellationToken)
+        {
+            try
+            {
+                if (!e.Retain)
+                {
+                    logger?.LogInformation($"Event {e.ConditionName} -> {e.Message} {e.Comment} {e.StateText}");
+                    if (e.IsAlarm)
+                    {
+                        await client.AcknowledgeAsync(e.Handle, e.Id, "CHD ACK", cancellationToken);
+                    }
+                }
+                else
+                {
+                    logger?.LogWarning(
+                        $"Event {e.ConditionName} -> {e.Message} {e.Comment} {e.StateText} {e.IsDialog} {e.IsAlarm}");
+                    if (e.IsAlarm && string.IsNullOrWhiteSpace(e.Comment))
+                    {
+                        await client.AddCommentAsync(e.Handle, e.Id, "Test Comment", cancellationToken);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, ex.Message);
+            }
+        }
+
+        private async Task Client_MonitoredItemNotification(object? sender, Contracts.MonitoredItemEventArgs e, CancellationToken cancellationToken)
         {
             logger?.LogInformation($"Item {e.Node} [{e.Value}]");
         }

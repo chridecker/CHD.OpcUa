@@ -6,6 +6,6 @@ using System.Threading.Tasks;
 
 namespace chd.OpcUa.Contracts
 {
-    public delegate Task AsyncEventHandler<TEventArgs>(object? sender, TEventArgs e)
+    public delegate Task AsyncEventHandler<TEventArgs>(object? sender, TEventArgs e, CancellationToken cancellationToken = default)
         where TEventArgs : EventArgs;
 }
