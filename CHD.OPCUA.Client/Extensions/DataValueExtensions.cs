@@ -8,6 +8,9 @@ namespace chd.OpcUa.Client.Extensions
     public static class DataValueExtensions
     {
 
+        public static object GetValue(this Variant value)
+            => new DataValue(value).GetValue();
+
         public static object GetValue(this DataValue value)
         {
             switch (value.WrappedValue.TypeInfo.BuiltInType)

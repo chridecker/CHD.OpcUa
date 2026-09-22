@@ -31,8 +31,8 @@ namespace chd.OpcUa.Client
 		private ApplicationInstance? _instance;
 		private ApplicationConfiguration? _configuration => _instance.ApplicationConfiguration;
 
-		private List<ExpandedNodeId> _nodes = [];
-		private List<ExpandedNodeId> _methods = [];
+		private List<NodeDto> _nodes = [];
+		private List<NodeDto> _methods = [];
 
 		private ISession _session;
 
@@ -115,6 +115,30 @@ namespace chd.OpcUa.Client
 			=> _subscription.MonitoredItems.TryGetMonitoredItemByName(node, out var item)
 			   && _subscription.MonitoredItems.TryRemove(item.ClientHandle);
 
+		public async Task<IEnumerable<object>> CallMethod(string method, CancellationToken cancellationToken = default, params object[] inputs)
+		{
+			var response = await CallMethod(method, inputs, cancellationToken);
+			return response.ToList().Select(s => s.GetValue());
+		}
+
+		public async Task<TOutput> CallMethod<TInput, TOutput>(string method, TInput input, CancellationToken cancellationToken = default)
+		where TInput : struct
+		where TOutput : struct
+		{
+            var response = await CallMethod(method, input.ToInputArray(), cancellationToken);
+            return response.ToList().Select(s => s.GetValue()).ToOuputData<TOutput>();
+        }
+
+		private Task<ArrayOf<Variant>> CallMethod(string method, object[] inputs, CancellationToken cancellationToken)
+		{
+			if (this._methods.All(a => a.Identifier != method))
+			{
+				throw new Exception($"Konnte die Methode {method} nicht finden");
+			}
+
+			var dto = this._methods.FirstOrDefault(x => x.Identifier == method);
+			return this._session.CallAsync(dto.ParentNodeId, dto.Node.InnerNodeId, cancellationToken, inputs.Select(s => new Variant(s)).ToArray());
+		}
 
 		public async Task StopAsync(CancellationToken cancellationToken = default)
 		{
@@ -138,12 +162,13 @@ namespace chd.OpcUa.Client
 			_methods.Clear();
 		}
 
+
 		private Task<T> ExecuteForNode<T>(string node, Func<NodeId, Task<T>> func)
 		{
-			if (_nodes.Any(a => a.IdentifierAsString == node))
+			if (_nodes.Any(a => a.Identifier == node))
 			{
-				var cachedNode = _nodes.FirstOrDefault(a => a.IdentifierAsString == node);
-				return func(cachedNode.InnerNodeId);
+				var cachedNode = _nodes.FirstOrDefault(a => a.Identifier == node);
+				return func(cachedNode.Node.InnerNodeId);
 			}
 			throw new Exception($"Konten {node} nicht gefunden!");
 		}
@@ -193,20 +218,16 @@ namespace chd.OpcUa.Client
 				switch (child.NodeClass)
 				{
 					case NodeClass.Method:
-						// register Method
-						_methods.Add(child.NodeId);
+						_methods.Add(new(child, parentId.Value));
 						break;
 					case NodeClass.Variable:
-						_nodes.Add(child.NodeId);
+						_nodes.Add(new(child, parentId.Value));
 						break;
 					default:
 						await BrowseNodeAsync(child.NodeId.InnerNodeId, cancellationToken);
 						break;
 				}
 			}
-
-			// update the attributes display.
-
 		}
 
 

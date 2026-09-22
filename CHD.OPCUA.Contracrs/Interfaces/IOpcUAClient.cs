@@ -6,11 +6,11 @@ using System.Threading.Tasks;
 
 namespace chd.OpcUa.Contracts.Interfaces
 {
-    public interface IOpcUAClient : IReadClient, IWriteClient, INotifyItemClient, IAsyncDisposable
+    public interface IOpcUAClient : IReadClient, IWriteClient, INotifyItemClient, ICallMethodClient, IAsyncDisposable
     {
-       Task StartAsync(CancellationToken cancellationToken);
-       Task StopAsync(CancellationToken cancellationToken);
-       bool IsConnected { get; }
+        Task StartAsync(CancellationToken cancellationToken);
+        Task StopAsync(CancellationToken cancellationToken);
+        bool IsConnected { get; }
 
 
     }
