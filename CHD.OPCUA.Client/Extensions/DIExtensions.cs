@@ -1,11 +1,13 @@
 ﻿using chd.OpcUa.Contracts.Interfaces;
+using chd.OpcUa.Contracts.Options;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Opc.Ua;
+using Opc.Ua.Client.Subscriptions;
 using System;
 using System.Collections.Generic;
 using System.Text;
-using chd.OpcUa.Contracts.Options;
-using Opc.Ua.Client.Subscriptions;
 
 namespace chd.OpcUa.Client.Extensions
 {
@@ -16,6 +18,8 @@ namespace chd.OpcUa.Client.Extensions
             services.AddOpcUa();
             services.Configure<OpcUaClientOptions>(configuration.GetSection(nameof(OpcUaClientOptions)));
             services.Configure<SubscriptionOptions>(configuration.GetSection(nameof(SubscriptionOptions)));
+            services.AddTransient<ITelemetryContext>(sp =>
+                DefaultTelemetry.Create(c => c.SetMinimumLevel(LogLevel.Trace)));
             services.AddTransient<IOpcUAClient, OpcUaClient>();
             services.AddTransient<NotificationHandler>();
 

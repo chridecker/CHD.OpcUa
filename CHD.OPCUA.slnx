@@ -1,5 +1,7 @@
 <Solution>
   <Project Path="chd.OpcUa.Client/chd.OpcUa.Client.csproj" />
   <Project Path="chd.OpcUa.Contracrs/chd.OpcUa.Contracts.csproj" />
+  <Project Path="chd.OpcUa.Server/chd.OpcUa.Server.csproj" Id="3af3d932-50cd-4b6d-8476-3fd44456e1b8" />
+  <Project Path="chd.OpcUa.ServerWorker/chd.OpcUa.ServerWorker.csproj" Id="598ac183-44ce-4058-abb9-953093cb899b" />
   <Project Path="chd.OpcUa.Worker/chd.OpcUa.Worker.csproj" />
 </Solution>

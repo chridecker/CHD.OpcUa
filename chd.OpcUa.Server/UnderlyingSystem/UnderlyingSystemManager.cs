@@ -1,0 +1,62 @@
+﻿using chd.OpcUa.Server.Interfaces;
+using chd.OpcUa.Server.UnderlyingSystem;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Text;
+using chd.OpcUa.Server.Extensions;
+using Opc.Ua;
+using Opc.Ua.Server;
+
+namespace chd.OpcUa.Server
+{
+    public abstract class UnderlyingSystemManager : IUnderlyingSystemManager
+    {
+        private List<UnderlyingSystemSegment> _segments;
+        private ConcurrentDictionary<string, UnderlyingSystemBlock> _blocks = [];
+
+
+        public async ValueTask<List<UnderlyingSystemSegment>> GetMainSegmentsAsync(CancellationToken cancellationToken)
+        {
+            if (_segments is null)
+            {
+                _segments = await LoadSegments(cancellationToken);
+            }
+
+            return _segments;
+        }
+
+        public List<UnderlyingSystemSegment> FindSegmentsForBlock(string blockIdentifier)
+         => _segments.Flatten().Where(x => x.Blocks.Contains(blockIdentifier)).ToList();
+
+        public ValueTask<UnderlyingSystemSegment> FindSegmentByIdentifier(string identifier, CancellationToken cancellationToken)
+            => ValueTask.FromResult(_segments.Flatten().FirstOrDefault(x => x.Identifier == identifier));
+
+        public ValueTask<UnderlyingSystemBlock> FindBlockByIdentifier(string identifier,
+            CancellationToken cancellationToken)
+        {
+            if (_blocks.TryGetValue(identifier, out var block))
+            {
+                return ValueTask.FromResult(block);
+            }
+
+            return ValueTask.FromResult(block);
+        }
+
+        public ValueTask InitializeAsync(CancellationToken cancellationToken)
+        => CreateBlocksAsync(cancellationToken);
+
+
+        protected abstract ValueTask<List<UnderlyingSystemSegment>> LoadSegments(CancellationToken cancellationToken);
+        protected abstract ValueTask<UnderlyingSystemBlock> CreateBlockAsync(string blockName, CancellationToken cancellationToken);
+
+        private async ValueTask CreateBlocksAsync(CancellationToken cancellationToken)
+        {
+            foreach (var blockName in _segments.Flatten().SelectMany(s => s.Blocks).Distinct())
+            {
+                var block = await CreateBlockAsync(blockName, cancellationToken);
+                _blocks[blockName] = block;
+            }
+        }
+    }
+}

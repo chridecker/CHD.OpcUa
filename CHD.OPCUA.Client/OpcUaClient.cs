@@ -25,12 +25,12 @@ using SubscriptionOptions = Opc.Ua.Client.Subscriptions.SubscriptionOptions;
 namespace chd.OpcUa.Client
 {
     public class OpcUaClient(ILogger<OpcUaClient> logger,
+        ITelemetryContext telemetryContext,
         NotificationHandler subscriptionNotificationHandler,
         IOptionsMonitor<Contracts.Options.OpcUaClientOptions> optionsMonitor,
         IOptionsMonitor<SubscriptionOptions> subscritptionsOptionsMonitor) : IOpcUAClient
     {
         private Contracts.Options.OpcUaClientOptions _options => optionsMonitor.CurrentValue;
-        private ITelemetryContext _telemetryContext = DefaultTelemetry.Create(c => c.SetMinimumLevel(LogLevel.Trace));
         private ApplicationInstance? _instance;
         private ApplicationConfiguration? _configuration => _instance.ApplicationConfiguration;
 
@@ -161,7 +161,7 @@ namespace chd.OpcUa.Client
                 return;
             }
 
-            var client = new AcknowledgeableConditionTypeClient(_session, condition.NodeId, _telemetryContext);
+            var client = new AcknowledgeableConditionTypeClient(_session, condition.NodeId, telemetryContext);
             await client.AcknowledgeAsync(new ByteString(eventId),
                 new LocalizedText(comment), cancellationToken);
         }
@@ -173,7 +173,7 @@ namespace chd.OpcUa.Client
                 return;
             }
 
-            var client = new AcknowledgeableConditionTypeClient(_session, condition.NodeId, _telemetryContext);
+            var client = new AcknowledgeableConditionTypeClient(_session, condition.NodeId, telemetryContext);
             await client.AddCommentAsync(new ByteString(eventId),
                 new LocalizedText(comment), cancellationToken);
         }
@@ -185,7 +185,7 @@ namespace chd.OpcUa.Client
                 return;
             }
 
-            var client = new AcknowledgeableConditionTypeClient(_session, condition.NodeId, _telemetryContext);
+            var client = new AcknowledgeableConditionTypeClient(_session, condition.NodeId, telemetryContext);
             await client.ConfirmAsync(new ByteString(eventId),
                 new LocalizedText(comment), cancellationToken);
         }
@@ -347,15 +347,11 @@ namespace chd.OpcUa.Client
             }
         }
 
-
-
-
-
         private async Task InitializeApplicationInstance(CancellationToken cancellationToken)
         {
             if (_instance is null)
             {
-                _instance = new ApplicationInstance(_telemetryContext)
+                _instance = new ApplicationInstance(telemetryContext)
                 {
                     ApplicationType = ApplicationType.Client,
                     ApplicationName = _options.Name,
@@ -389,7 +385,7 @@ namespace chd.OpcUa.Client
 
         private async Task CreateSessionAsync(ConfiguredEndpoint endpoint, int timeout, IUserIdentity identity, CancellationToken cancellationToken)
         {
-            _session = await new ManagedSessionFactory(_telemetryContext).CreateAsync(
+            _session = await new ManagedSessionFactory(telemetryContext).CreateAsync(
                 _configuration,
                 endpoint,
                 false,
@@ -408,7 +404,7 @@ namespace chd.OpcUa.Client
 
             try
             {
-                using var typeSystem = ComplexTypeSystemClientExtensions.Create(_session, _telemetryContext);
+                using var typeSystem = ComplexTypeSystemClientExtensions.Create(_session, telemetryContext);
 
                 await typeSystem.LoadAsync(ct: cancellationToken).ConfigureAwait(false);
             }
