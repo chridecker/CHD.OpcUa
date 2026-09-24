@@ -34,7 +34,39 @@ namespace chd.OpcUa.Server.Extensions
             }
 
             var server = services.AddOpcUa()
-                 .AddServer(configFile.FullName);
+                 .AddServer(configFile.FullName)
+                 .AddNodeManager<NodeManagerFactory>()
+                 .ConfigureRoles(roles =>
+                 {
+                     roles.Roles.Add(new RoleDefinitionOptions()
+                     {
+                         Name = "Administrator",
+                         Identities =
+                         {
+                             new RoleIdentityMappingOptions()
+                             {
+                                 Criteria = "admin",
+                                 CriteriaType = IdentityCriteriaType.UserName
+                             }
+                     }
+                     });
+                 })
+                 .AddIdentityAuthenticator((_,_)=> new UserNamePasswordAuthenticator((handler,ct) =>
+                 {
+                     var password = handler.DecryptedPassword != null
+                         ? Encoding.UTF8.GetString(handler.DecryptedPassword)
+                         : null;
+
+                     if (string.Equals(handler.UserName, "admin", StringComparison.OrdinalIgnoreCase)
+                         && string.Equals(password, "1234", StringComparison.Ordinal))
+                     {
+                         return new ValueTask<IUserIdentity>(new UserIdentity(handler));
+                     }
+                     throw ServiceResultException.Create(
+                         StatusCodes.BadUserAccessDenied,
+                         "'{0}' is not one of the sample accounts, or the password is wrong.",
+                         handler.UserName);
+                 }));
 
             services.TryAddSingleton(TimeProvider.System);
             services.AddTransient<ITelemetryContext>(sp =>
@@ -56,8 +88,6 @@ namespace chd.OpcUa.Server.Extensions
             services.Replace(ServiceDescriptor.Singleton<IOpcUaServerFactory>(
                 provider => provider.GetService<UaServerFactory>()));
 
-            // the parts of the server: the node managers of the sample first of all.
-            server.AddNodeManager<NodeManagerFactory>();
 
             // registered after the parts of the sample, so its startup tasks have run
             // when the start of the host returns with the server listening - which the
