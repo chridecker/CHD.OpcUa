@@ -6,7 +6,7 @@ namespace chd.OpcUa.Server.ObjectSystem
 {
     public abstract class ObjectSystemAttribute : Attribute
     {
-        public string DisplayName { get; set; }
+        public string DisplayName { get;}
         public bool CanWrite { get; set; }
         protected ObjectSystemAttribute(string displayName)
         {

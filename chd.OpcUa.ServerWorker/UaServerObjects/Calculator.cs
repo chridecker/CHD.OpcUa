@@ -8,9 +8,8 @@ namespace chd.OpcUa.ServerWorker.UaServerObjects
 {
     public class Calculator(string name) : BaseUaServerObject(name)
     {
-        private int _counter = 0;
-        [ObjectSystemProperty("CallCounter", CanWrite = true)]
-        public int Counter { get => _counter; set => SetField(ref this._counter, value); }
+        [ObjectSystemProperty("CallCounter")]
+        public int Counter { get; set => SetField(ref field, value); }
 
         [ObjectSystemMethod]
         public async Task<double> Sum(double x, double y, CancellationToken cancellationToken)
