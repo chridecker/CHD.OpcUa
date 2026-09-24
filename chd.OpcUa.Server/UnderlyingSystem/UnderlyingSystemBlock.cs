@@ -3,6 +3,7 @@ using Opc.Ua;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text;
 using chd.OpcUa.Base.Extensions;
 
@@ -26,12 +27,13 @@ namespace chd.OpcUa.Server.UnderlyingSystem
             BlockType = blockType;
         }
 
-        public void CreateMethod(string name, Action<UnderlyingSystemMethod> handleMethod)
+        public void AddMethod(string name, Action<UnderlyingSystemMethod> handleMethod = null)
         {
             var method = new UnderlyingSystemMethod(name, this, this.MethodExecuted);
-            handleMethod(method);
+            handleMethod?.Invoke(method);
             _methods.Add(method);
         }
+        
 
         public void CreateTag<T>(string tagName, string description, bool writeable, string[] labels = null)
         {

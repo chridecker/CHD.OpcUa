@@ -114,7 +114,7 @@ namespace chd.OpcUa.ServerWorker
                         block.CreateTag<string>("Input4", "", true);
                         block.CreateTag<ESystemState>("Status", "", false, Enum.GetNames<ESystemState>());
 
-                        block.CreateMethod(nameof(StartCustomController), (method) =>
+                        block.AddMethod(nameof(StartCustomController), (method) =>
                         {
                             method.CreateInputArgument("Initial State", typeof(uint));
                             method.CreateInputArgument("Final State", typeof(uint));
@@ -122,6 +122,7 @@ namespace chd.OpcUa.ServerWorker
                             method.CreateOutputArgument("Initial State", typeof(uint));
                             method.CreateOutputArgument("Final State", typeof(uint));
                         });
+                        block.AddMethod(nameof(Sum), HandleSystemMethod);
                         break;
                     }
             }
@@ -129,9 +130,42 @@ namespace chd.OpcUa.ServerWorker
 
 
 
+        public void HandleSystemMethod(UnderlyingSystemMethod method)
+        {
+            var methodInfo = this.GetType().GetMethod(method.Name);
+            if (methodInfo is null)
+            {
+                return;
+            }
+
+            foreach (var inputArg in methodInfo.GetParameters().Where(x => x.ParameterType != typeof(CancellationToken)))
+            {
+                method.CreateInputArgument(inputArg.Name, inputArg.ParameterType);
+            }
+
+            if (method.OutputArguments.Count == 0
+                && (methodInfo.ReturnType.IsAssignableTo(typeof(Task))
+                    || methodInfo.ReturnType.IsAssignableTo(typeof(ValueTask)))
+                && methodInfo.ReturnType.GenericTypeArguments.Any())
+            {
+                method.CreateOutputArgument("Result", methodInfo.ReturnType.GenericTypeArguments[0]);
+            }
+            else if (method.OutputArguments.Count == 0
+                     && methodInfo.ReturnType != typeof(void))
+            {
+                method.CreateOutputArgument("Result", methodInfo.ReturnType);
+            }
+        }
+
         public ValueTask<object[]> StartCustomController(uint initalState, uint finalState, CancellationToken cancellationToken)
         {
             return ValueTask.FromResult(new object[] { finalState, initalState });
+        }
+
+        public async Task<int> Sum(int a, int b, CancellationToken cancellationToken)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            return a + b;
         }
     }
 }

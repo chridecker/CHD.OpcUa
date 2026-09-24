@@ -27,8 +27,16 @@ namespace chd.OpcUa.Server.Model
             UserExecutable = true;
             Executable = true;
 
-            this.InputArguments = new PropertyInputArgumentState(method, ModelUtils.ConstructIdForInputArguments(_method.Identifier, _nodeManager.NamespaceIndex), this);
-            this.OutputArguments = new PropertyOutputArgumentState(method, ModelUtils.ConstructIdForOutputArguments(_method.Identifier, _nodeManager.NamespaceIndex), this);
+            if (_method.InputArguments.Any())
+            {
+                this.InputArguments = new PropertyInputArgumentState(method,
+                    ModelUtils.ConstructIdForInputArguments(_method.Identifier, _nodeManager.NamespaceIndex), this);
+            }
+
+            if (_method.OutputArguments.Any())
+            {
+                this.OutputArguments = new PropertyOutputArgumentState(method, ModelUtils.ConstructIdForOutputArguments(_method.Identifier, _nodeManager.NamespaceIndex), this);
+            }
 
             OnCallMethod2Async = OnExecuteAsync;
         }

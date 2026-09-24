@@ -95,15 +95,36 @@ namespace chd.OpcUa.Server
             {
                 return await (ValueTask<object[]>)result;
             }
-            if (execution.ReturnType == typeof(ValueTask))
+            if (execution.ReturnType == typeof(Task<object[]>))
+            {
+                return await (Task<object[]>)result;
+            }
+            if (execution.ReturnType.IsAssignableTo(typeof(ValueTask)))
             {
                 await (ValueTask)result;
+            }
+            if (execution.ReturnType.IsAssignableTo(typeof(Task)))
+            {
+                await (Task)result;
             }
             if (execution.ReturnType == typeof(object[]))
             {
                 return (object[])result;
             }
-            return Array.Empty<object>();
+
+            if ((execution.ReturnType.IsAssignableTo(typeof(ValueTask))
+                 || execution.ReturnType.IsAssignableTo(typeof(Task)))
+                && execution.ReturnType.IsGenericType)
+            {
+                result = result.GetType()
+                    .GetProperty("Result")
+                    ?.GetValue(result);
+            }
+            if (execution.ReturnType == typeof(void))
+            {
+                return [];
+            }
+            return [result];
         }
     }
 }
