@@ -15,6 +15,8 @@ namespace chd.OpcUa.Server.Interfaces
 
         ValueTask<UnderlyingSystemBlock> FindBlockByIdentifier(string identifier, CancellationToken cancellationToken);
 
+        ValueTask<UnderlyingSystemMethod> FindMethodByIdentifier(string identifier, CancellationToken cancellationToken);
+
         ValueTask InitializeAsync(CancellationToken cancellationToken);
     }
 }

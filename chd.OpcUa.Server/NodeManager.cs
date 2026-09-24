@@ -1,12 +1,13 @@
-﻿using Opc.Ua;
+﻿using chd.OpcUa.Server.Interfaces;
+using chd.OpcUa.Server.Model;
+using chd.OpcUa.Server.UnderlyingSystem;
+using Opc.Ua;
 using Opc.Ua.Server;
 using Opc.Ua.Server.Fluent;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text;
-using chd.OpcUa.Server.Interfaces;
-using chd.OpcUa.Server.Model;
-using chd.OpcUa.Server.UnderlyingSystem;
 
 namespace chd.OpcUa.ServerWorker
 {
@@ -14,6 +15,8 @@ namespace chd.OpcUa.ServerWorker
     {
         private readonly IUnderlyingSystemManager _underlyingSystemManager;
         private NodeIdDictionary<BlockState> _blocks = new();
+        private NodeIdDictionary<MethodExecutionState> _methods = new();
+
         public IUnderlyingSystemManager UnderlyingSystemManager => this._underlyingSystemManager;
 
         public NodeManager(IServerInternal server, ApplicationConfiguration configuration, IUnderlyingSystemManager underlyingSystemManager, params string[] namespaces)
@@ -103,6 +106,54 @@ namespace chd.OpcUa.ServerWorker
                     root = new BlockState(this, rootId, block);
                 }
             }
+            else if (parsedNodeId.RootType == ModelUtils.Method)
+            {
+                var method =
+                    await _underlyingSystemManager.FindMethodByIdentifier(parsedNodeId.RootId, cancellationToken);
+                if (method is null)
+                {
+                    return default;
+                }
+                var rootId = ModelUtils.ConstructIdForMethod(method.Identifier, NamespaceIndex);
+                if (_methods.TryGetValue(rootId, out var methodState))
+                {
+                    root = methodState;
+                }
+                else
+                {
+                    root = new MethodExecutionState(this, rootId, method, null);
+                    this._methods.Add(rootId, (MethodExecutionState)root);
+                }
+            }
+            else if (parsedNodeId.RootType == ModelUtils.InputArgument)
+            {
+                var method =
+                    await _underlyingSystemManager.FindMethodByIdentifier(parsedNodeId.RootId.Replace(":Input", ""), cancellationToken);
+                if (method is null)
+                {
+                    return default;
+                }
+                var rootId = ModelUtils.ConstructIdForMethod(method.Identifier, NamespaceIndex);
+
+                if (_methods.TryGetValue(rootId, out var methodState))
+                {
+                    root = methodState.InputArguments;
+                }
+            }
+            else if (parsedNodeId.RootType == ModelUtils.OutputArgument)
+            {
+                var method =
+                    await _underlyingSystemManager.FindMethodByIdentifier(parsedNodeId.RootId.Replace(":Output", ""), cancellationToken);
+                if (method is null)
+                {
+                    return default;
+                }
+                var rootId = ModelUtils.ConstructIdForMethod(method.Identifier, NamespaceIndex);
+                if (_methods.TryGetValue(rootId, out var methodState))
+                {
+                    root = methodState.OutputArguments;
+                }
+            }
             else
             {
                 return default;
@@ -114,6 +165,8 @@ namespace chd.OpcUa.ServerWorker
             }
             return root.FindChildBySymbolicName(context, parsedNodeId.ComponentPath);
         }
+
+
 
         private void OnBlockMonitoredItemCreated(
             ISystemContext context,

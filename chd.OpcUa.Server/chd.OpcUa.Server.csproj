@@ -22,4 +22,7 @@
 	<ItemGroup>
 		<PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Server" Version="2.0.334.14261-preview" />
 	</ItemGroup>
+	<ItemGroup>
+	  <ProjectReference Include="..\chd.OpcUa.Base\chd.OpcUa.Base.csproj" />
+	</ItemGroup>
 </Project>

@@ -10,6 +10,7 @@ namespace chd.OpcUa.Server.UnderlyingSystem
     public class UnderlyingSystemBlock
     {
         private readonly ConcurrentBag<UnderlyingSystemTag> _tags = [];
+        private readonly ConcurrentBag<UnderlyingSystemMethod> _methods = [];
         private event EventHandler<UnderlyingSystemTag> OnTagsChanged;
 
         public string Name { get; set; }
@@ -22,6 +23,13 @@ namespace chd.OpcUa.Server.UnderlyingSystem
         {
             Name = name;
             BlockType = blockType;
+        }
+
+        public void CreateMethod(string name, Action<UnderlyingSystemMethod> handleMethod)
+        {
+            var method = new UnderlyingSystemMethod(name, this, this.MethodExecuted);
+            handleMethod(method);
+            _methods.Add(method);
         }
 
         public void CreateTag(string tagName, UnderlyingSystemDataType dataType, UnderlyingSystemTagType tagType, string engineeringUnits, bool writeable)
@@ -84,6 +92,8 @@ namespace chd.OpcUa.Server.UnderlyingSystem
         }
 
         public IList<UnderlyingSystemTag> GetTags() => _tags.Select(s => s.CreateSnapshot()).ToList();
+
+        public IList<UnderlyingSystemMethod> GetMethods() => _methods.Select(s => s.CreateSnapshot()).ToList();
 
         public StatusCode WriteTagValue(string tagName, Variant value)
         {
@@ -170,5 +180,21 @@ namespace chd.OpcUa.Server.UnderlyingSystem
         {
             OnTagsChanged = null;
         }
+
+        public event UnderlyingSystemMethodExcutionHandler MethodExecution;
+
+
+        private ValueTask<object[]> MethodExecuted(UnderlyingSystemMethod method, object[] inputs, CancellationToken cancellationToken)
+        {
+            if (MethodExecution is not null)
+            {
+                return MethodExecution.Invoke(method, inputs, cancellationToken);
+            }
+
+            return ValueTask.FromResult(Array.Empty<object>());
+        }
     }
+
+    public delegate ValueTask<object[]> UnderlyingSystemMethodExcutionHandler(UnderlyingSystemMethod method,
+        object[] inputs, CancellationToken cancellationToken);
 }

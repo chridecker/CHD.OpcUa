@@ -1,4 +1,5 @@
 ﻿using chd.OpcUa.Client.Extensions;
+using chd.OpcUa.Base.Extensions;
 using chd.OpcUa.Contracts;
 using chd.OpcUa.Contracts.Interfaces;
 using chd.OpcUa.Contracts.Options;

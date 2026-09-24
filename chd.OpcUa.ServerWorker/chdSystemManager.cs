@@ -4,6 +4,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Opc.Ua;
 using Opc.Ua.Server;
@@ -76,7 +77,7 @@ namespace chd.OpcUa.Server
         };
 
 
-        private static void HandleBlock(UnderlyingSystemBlock block)
+        private void HandleBlock(UnderlyingSystemBlock block)
         {
             switch (block.BlockType)
             {
@@ -121,10 +122,49 @@ namespace chd.OpcUa.Server
                             true);
                         block.CreateTag("Output", UnderlyingSystemDataType.Real4, UnderlyingSystemTagType.Normal, null,
                             false);
+
+                        block.CreateMethod(nameof(StartCustomController), HandleCustomController);
+                        block.MethodExecution += Block_MethodExecution;
                         break;
                     }
             }
         }
 
+        private async ValueTask<object[]> Block_MethodExecution(UnderlyingSystemMethod method, object[] inputs, CancellationToken cancellationToken)
+        {
+            var execution = this.GetType().GetMethod(method.Name);
+            if (execution is null)
+            {
+                throw new NotImplementedException($"Konnte die Methode {method.Name} nicht finden!");
+            }
+
+            var result = execution.Invoke(this, [inputs, cancellationToken]);
+            if (execution.ReturnType == typeof(ValueTask<object[]>))
+            {
+                return await (ValueTask<object[]>)result;
+            }
+            if (execution.ReturnType == typeof(ValueTask))
+            {
+                await (ValueTask)result;
+            }
+            if (execution.ReturnType == typeof(object[]))
+            {
+                return (object[])result;
+            }
+            return Array.Empty<object>();
+        }
+
+        public ValueTask<object[]> StartCustomController(object[] inputs, CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(inputs);
+        }
+
+        private static void HandleCustomController(UnderlyingSystemMethod method)
+        {
+            method.CreateInputArgument("Initial State", typeof(uint));
+            method.CreateInputArgument("Final State", typeof(uint));
+            method.CreateOutputArgument("Initial State", typeof(uint));
+            method.CreateOutputArgument("Final State", typeof(uint));
+        }
     }
 }

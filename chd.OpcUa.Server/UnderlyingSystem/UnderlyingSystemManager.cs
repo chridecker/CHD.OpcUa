@@ -15,7 +15,6 @@ namespace chd.OpcUa.Server
         private List<UnderlyingSystemSegment> _segments;
         private ConcurrentDictionary<string, UnderlyingSystemBlock> _blocks = [];
 
-
         public async ValueTask<List<UnderlyingSystemSegment>> GetMainSegmentsAsync(CancellationToken cancellationToken)
         {
             if (_segments is null)
@@ -41,6 +40,18 @@ namespace chd.OpcUa.Server
             }
 
             return ValueTask.FromResult(block);
+        }
+
+        public ValueTask<UnderlyingSystemMethod> FindMethodByIdentifier(string identifier,
+            CancellationToken cancellationToken)
+        {
+            var args = identifier.Split("#");
+            if (_blocks.TryGetValue(args[0], out var block))
+            {
+                return ValueTask.FromResult(block.GetMethods().FirstOrDefault(x => string.Equals(x.Identifier, identifier)));
+            }
+
+            return ValueTask.FromResult((UnderlyingSystemMethod)null);
         }
 
         public ValueTask InitializeAsync(CancellationToken cancellationToken)

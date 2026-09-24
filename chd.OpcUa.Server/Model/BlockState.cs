@@ -4,14 +4,15 @@ using Opc.Ua;
 using Opc.Ua.Server;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text;
 
 namespace chd.OpcUa.Server.Model
 {
     public class BlockState : BaseObjectState
     {
-        private UnderlyingSystemBlock _block;
-        private NodeManager _nodeManager;
+        private readonly UnderlyingSystemBlock _block;
+        private readonly NodeManager _nodeManager;
         private int _monitoringCount;
 
         public BlockState(NodeManager nodeManager, NodeId nodeId, UnderlyingSystemBlock block) : base(null)
@@ -35,9 +36,16 @@ namespace chd.OpcUa.Server.Model
                 AddChild(variable);
                 variable.OnSimpleWriteValueAsync = OnWriteTagValueAsync;
             }
+
+            foreach (var method in block.GetMethods())
+            {
+                var methodNodeId = ModelUtils.ConstructIdForMethod(method.Identifier, nodeId.NamespaceIndex);
+                var exec = new MethodExecutionState(nodeManager, methodNodeId, method, this);
+                AddChild(exec);
+            }
         }
 
-        public ValueTask<AttributeWriteResult> OnWriteTagValueAsync(
+        private ValueTask<AttributeWriteResult> OnWriteTagValueAsync(
             ISystemContext context,
             NodeState node,
             Variant value,

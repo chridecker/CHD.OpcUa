@@ -12,6 +12,12 @@ namespace chd.OpcUa.Server.Model
 
         public const int Block = 1;
 
+        public const int Method = 2;
+
+        public const int InputArgument = 3;
+
+        public const int OutputArgument = 4;
+
         public static NodeId ConstructIdForSegment(string identifier, ushort namespaceIndex)
         {
             var parsedNodeId = new ParsedNodeId
@@ -30,6 +36,38 @@ namespace chd.OpcUa.Server.Model
                 RootId = blockId,
                 NamespaceIndex = namespaceIndex,
                 RootType = Block
+            };
+            return parsedNodeId.Construct();
+        }
+
+        public static NodeId ConstructIdForMethod(string methodId, ushort namespaceIndex)
+        {
+            var parsedNodeId = new ParsedNodeId
+            {
+                RootId = methodId,
+                NamespaceIndex = namespaceIndex,
+                RootType = Method
+            };
+            return parsedNodeId.Construct();
+        }
+        public static NodeId ConstructIdForInputArguments(string argumentsId, ushort namespaceIndex)
+        {
+            var parsedNodeId = new ParsedNodeId
+            {
+                RootId = argumentsId + ":Input",
+                NamespaceIndex = namespaceIndex,
+                RootType = InputArgument
+            };
+            return parsedNodeId.Construct();
+        }
+
+        public static NodeId ConstructIdForOutputArguments(string argumentsId, ushort namespaceIndex)
+        {
+            var parsedNodeId = new ParsedNodeId
+            {
+                RootId = argumentsId + ":Output",
+                NamespaceIndex = namespaceIndex,
+                RootType = OutputArgument
             };
             return parsedNodeId.Construct();
         }
