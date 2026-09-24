@@ -36,6 +36,7 @@ namespace chd.OpcUa.Server.Model
                 var variable = CreateVariable(nodeManager.SystemContext, tag);
                 AddChild(variable);
                 variable.OnSimpleWriteValueAsync = OnWriteTagValueAsync;
+                variable.OnSimpleReadValueAsync = OnReadTagValueAsync;
             }
 
             foreach (var method in block.GetMethods())
@@ -46,7 +47,21 @@ namespace chd.OpcUa.Server.Model
             }
         }
 
-        private ValueTask<AttributeWriteResult> OnWriteTagValueAsync(
+        private async ValueTask<AttributeSimpleReadResult> OnReadTagValueAsync(ISystemContext context, NodeState node,
+            CancellationToken cancellationToken)
+        {
+            if (_block is null)
+            {
+                return new AttributeSimpleReadResult(ServiceResult.Bad, Variant.Null);
+            }
+
+            var (error, value) = await _block.ReadTagValueAsync(node.SymbolicName, cancellationToken);
+            return new AttributeSimpleReadResult(error, value);
+
+
+        }
+
+        private async ValueTask<AttributeWriteResult> OnWriteTagValueAsync(
             ISystemContext context,
             NodeState node,
             Variant value,
@@ -54,18 +69,17 @@ namespace chd.OpcUa.Server.Model
         {
             if (_block is null)
             {
-                return new ValueTask<AttributeWriteResult>(
-                    new AttributeWriteResult(StatusCodes.BadNodeIdUnknown));
+                return new AttributeWriteResult(StatusCodes.BadNodeIdUnknown);
             }
 
-            var error = _block.WriteTagValue(node.SymbolicName, value);
+            var error = await _block.WriteTagValueAsync(node.SymbolicName, value, cancellationToken);
 
             if (error != 0)
             {
-                return new ValueTask<AttributeWriteResult>(new AttributeWriteResult(error));
+                return new AttributeWriteResult(error);
             }
 
-            return new ValueTask<AttributeWriteResult>(new AttributeWriteResult(ServiceResult.Good));
+            return new AttributeWriteResult(ServiceResult.Good);
         }
 
         public void StartMonitoring(ServerSystemContext context)

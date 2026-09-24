@@ -122,50 +122,18 @@ namespace chd.OpcUa.ServerWorker
                             method.CreateOutputArgument("Initial State", typeof(uint));
                             method.CreateOutputArgument("Final State", typeof(uint));
                         });
-                        block.AddMethod(nameof(Sum), HandleSystemMethod);
+                        //block.AddMethod(nameof(Sum), HandleSystemMethod);
                         break;
                     }
             }
         }
 
 
-
-        public void HandleSystemMethod(UnderlyingSystemMethod method)
+        public async ValueTask<object[]> StartCustomController(uint initalState, uint finalState, CancellationToken cancellationToken)
         {
-            var methodInfo = this.GetType().GetMethod(method.Name);
-            if (methodInfo is null)
-            {
-                return;
-            }
-
-            foreach (var inputArg in methodInfo.GetParameters().Where(x => x.ParameterType != typeof(CancellationToken)))
-            {
-                method.CreateInputArgument(inputArg.Name, inputArg.ParameterType);
-            }
-
-            if (method.OutputArguments.Count == 0
-                && (methodInfo.ReturnType.IsAssignableTo(typeof(Task))
-                    || methodInfo.ReturnType.IsAssignableTo(typeof(ValueTask)))
-                && methodInfo.ReturnType.GenericTypeArguments.Any())
-            {
-                method.CreateOutputArgument("Result", methodInfo.ReturnType.GenericTypeArguments[0]);
-            }
-            else if (method.OutputArguments.Count == 0
-                     && methodInfo.ReturnType != typeof(void))
-            {
-                method.CreateOutputArgument("Result", methodInfo.ReturnType);
-            }
-        }
-
-        public ValueTask<object[]> StartCustomController(uint initalState, uint finalState, CancellationToken cancellationToken)
-        {
-            return ValueTask.FromResult(new object[] { finalState, initalState });
-        }
-
-        public async Task<int> Sum(int a, int b, CancellationToken cancellationToken)
-        {
-            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
-            return a + b;
+            var b = await this.FindBlockByIdentifier("CC1001", cancellationToken);
+            _ = await b.WriteTagValueAsync("Input2", (int)initalState + (int)finalState, cancellationToken);
+            return new object[] { finalState, initalState };
         }
     }
 }

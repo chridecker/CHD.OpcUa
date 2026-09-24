@@ -3,6 +3,7 @@ using chd.OpcUa.Server.UnderlyingSystem;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text;
 using chd.OpcUa.Server.Extensions;
 using Opc.Ua;
@@ -54,25 +55,28 @@ namespace chd.OpcUa.Server
             return ValueTask.FromResult((UnderlyingSystemMethod)null);
         }
 
-        public ValueTask InitializeAsync(CancellationToken cancellationToken)
-        => CreateBlocksAsync(cancellationToken);
-
+        public ValueTask InitializeAsync(CancellationToken cancellationToken) => CreateBlocksAsync(cancellationToken);
 
         protected abstract ValueTask<List<UnderlyingSystemSegment>> LoadSegments(CancellationToken cancellationToken);
+
         protected abstract ValueTask<UnderlyingSystemBlock> CreateBlockAsync(string blockName, CancellationToken cancellationToken);
+
+        protected virtual (MethodInfo? method, object instance) GetMethodInfo(UnderlyingSystemMethod method) => (this.GetType().GetMethod(method.Name), this);
 
         private async ValueTask CreateBlocksAsync(CancellationToken cancellationToken)
         {
             foreach (var blockName in _segments.Flatten().SelectMany(s => s.Blocks).Distinct())
             {
                 var block = await CreateBlockAsync(blockName, cancellationToken);
+                if (block is null) { continue; }
                 block.MethodExecution += Block_MethodExecution;
                 _blocks[blockName] = block;
             }
         }
+
         private async ValueTask<object[]> Block_MethodExecution(UnderlyingSystemMethod method, object[] inputs, CancellationToken cancellationToken)
         {
-            var execution = this.GetType().GetMethod(method.Name);
+            var (execution, instance) = GetMethodInfo(method);
             if (execution is null)
             {
                 throw new NotImplementedException($"Konnte die Methode {method.Name} nicht finden!");
@@ -90,41 +94,57 @@ namespace chd.OpcUa.Server
                 inputsArray = inputs.Append(cancellationToken).ToArray();
             }
 
-            var result = execution.Invoke(this, inputsArray);
             if (execution.ReturnType == typeof(ValueTask<object[]>))
             {
-                return await (ValueTask<object[]>)result;
+                return await (ValueTask<object[]>)execution.Invoke(instance, inputsArray);
             }
             if (execution.ReturnType == typeof(Task<object[]>))
             {
-                return await (Task<object[]>)result;
+                return await (Task<object[]>)execution.Invoke(instance, inputsArray);
             }
             if (execution.ReturnType.IsAssignableTo(typeof(ValueTask)))
             {
-                await (ValueTask)result;
+                await (ValueTask)execution.Invoke(instance, inputsArray);
             }
-            if (execution.ReturnType.IsAssignableTo(typeof(Task)))
+            if (execution.ReturnType.IsAssignableTo(typeof(Task))
+                && !execution.ReturnType.IsGenericType)
             {
-                await (Task)result;
+                await (Task)execution.Invoke(instance, inputsArray);
             }
             if (execution.ReturnType == typeof(object[]))
             {
-                return (object[])result;
+                return (object[])execution.Invoke(instance, inputsArray);
             }
 
-            if ((execution.ReturnType.IsAssignableTo(typeof(ValueTask))
-                 || execution.ReturnType.IsAssignableTo(typeof(Task)))
-                && execution.ReturnType.IsGenericType)
+            if (execution.ReturnType.IsGenericType
+                && execution.ReturnType.GetGenericTypeDefinition() == typeof(Task<>)
+                && execution.Invoke(instance, inputsArray) is Task t)
             {
-                result = result.GetType()
+                await t;
+                var result = t.GetType()
                     .GetProperty("Result")
-                    ?.GetValue(result);
+                    ?.GetValue(t);
+                return [result];
+            }
+
+            if (execution.ReturnType.IsGenericType
+                && execution.ReturnType.GetGenericTypeDefinition() == typeof(ValueTask<>))
+            {
+                var valueTask = execution.Invoke(instance, inputsArray);
+                var task = (Task)valueTask.GetType()
+                    .GetMethod("AsTask")!
+                    .Invoke(valueTask, null)!;
+                await task;
+                var result = task.GetType()
+                    .GetProperty("Result")
+                    ?.GetValue(task);
+                return [result];
             }
             if (execution.ReturnType == typeof(void))
             {
-                return [];
+                execution.Invoke(instance, inputsArray);
             }
-            return [result];
+            return [];
         }
     }
 }

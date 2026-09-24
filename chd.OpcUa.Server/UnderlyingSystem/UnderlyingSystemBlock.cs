@@ -33,29 +33,47 @@ namespace chd.OpcUa.Server.UnderlyingSystem
             handleMethod?.Invoke(method);
             _methods.Add(method);
         }
-        
 
-        public void CreateTag<T>(string tagName, string description, bool writeable, string[] labels = null)
+
+        public async ValueTask CreateTag(Type type, string tagName, string description, bool writeable, string[] labels = null,
+            Func<CancellationToken, ValueTask<Variant>> readValue = null,
+            Func<Variant, CancellationToken, ValueTask> writeValue = null,
+            CancellationToken cancellationToken = default)
         {
             var tag = new UnderlyingSystemTag
             {
                 Block = this,
                 Name = tagName,
                 Description = description,
-                Type = typeof(T),
+                Type = type,
                 IsWriteable = writeable,
                 Labels = labels,
+                ReadFunc = readValue,
+                WriteFunc = writeValue
             };
-            tag.Value = tag.Type.IsEnum ? 0 : tag.Type.IsValueType ? new Variant(Activator.CreateInstance(tag.Type)) : null;
+            if (readValue is null)
+            {
+                tag.Value = tag.Type.IsEnum ? 0 : tag.Type.IsValueType ? new Variant(Activator.CreateInstance(tag.Type)) : null;
+            }
+            else
+            {
+                tag.Value = await readValue.Invoke(cancellationToken);
+            }
+
+
             _tags.Add(tag);
             Timestamp = DateTime.UtcNow;
         }
+
+        public void CreateTag<T>(string tagName, string description, bool writeable, string[] labels = null)
+            => CreateTag(typeof(T), tagName, description, writeable, labels);
+
 
         public IList<UnderlyingSystemTag> GetTags() => _tags.Select(s => s.CreateSnapshot()).ToList();
 
         public IList<UnderlyingSystemMethod> GetMethods() => _methods.Select(s => s.CreateSnapshot()).ToList();
 
-        public StatusCode WriteTagValue(string tagName, Variant value)
+        public async ValueTask<StatusCode> WriteTagValueAsync(string tagName, Variant value, CancellationToken cancellationToken)
         {
             var tag = _tags.FirstOrDefault(x => x.Name == tagName);
 
@@ -74,10 +92,34 @@ namespace chd.OpcUa.Server.UnderlyingSystem
 
             tag.Timestamp = DateTime.UtcNow;
 
+            if (tag.WriteFunc is not null)
+            {
+                await tag.WriteFunc.Invoke(tag.Value, cancellationToken);
+            }
+
             OnTagsChanged?.Invoke(this, tag);
 
             return StatusCodes.Good;
         }
+
+        public async ValueTask<(StatusCode, Variant)> ReadTagValueAsync(string tagName, CancellationToken cancellationToken)
+        {
+            var tag = _tags.FirstOrDefault(x => x.Name == tagName);
+
+            if (tag is null)
+            {
+                return (StatusCodes.BadNodeIdUnknown, Variant.Null);
+            }
+
+            if (tag.ReadFunc is not null)
+            {
+                tag.Value = await tag.ReadFunc.Invoke(cancellationToken);
+            }
+
+            return (StatusCodes.Good, tag.Value);
+        }
+
+
         public void StartMonitoring(EventHandler<UnderlyingSystemTag> callback)
         {
             OnTagsChanged = callback;
@@ -87,8 +129,16 @@ namespace chd.OpcUa.Server.UnderlyingSystem
             OnTagsChanged = null;
         }
 
-        public event UnderlyingSystemMethodExcutionHandler MethodExecution;
+        public void TagChanged(string tagName)
+        {
+            var tag = _tags.FirstOrDefault(x => x.Name == tagName);
+            if (tag is not null)
+            {
+                OnTagsChanged?.Invoke(this, tag);
+            }
+        }
 
+        public event UnderlyingSystemMethodExcutionHandler MethodExecution;
 
         private ValueTask<object[]> MethodExecuted(UnderlyingSystemMethod method, object[] inputs, CancellationToken cancellationToken)
         {

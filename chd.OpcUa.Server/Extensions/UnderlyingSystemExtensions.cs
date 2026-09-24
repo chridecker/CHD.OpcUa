@@ -17,6 +17,7 @@ namespace chd.OpcUa.Server.Extensions
 
             return result;
         }
+
         private static void AddRecursive(
             UnderlyingSystemSegment segment,
             List<UnderlyingSystemSegment> result)

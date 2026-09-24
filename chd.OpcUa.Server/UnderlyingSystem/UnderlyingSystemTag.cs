@@ -22,6 +22,9 @@ namespace chd.OpcUa.Server.UnderlyingSystem
 
         public string[] Labels { get; set; }
 
+        public Func<CancellationToken, ValueTask<Variant>> ReadFunc { get; set; }
+        public Func<Variant, CancellationToken, ValueTask> WriteFunc { get; set; }
+
         public UnderlyingSystemTag CreateSnapshot() => (UnderlyingSystemTag)MemberwiseClone();
     }
 }
