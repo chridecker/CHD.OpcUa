@@ -41,6 +41,10 @@ namespace chd.OpcUa.Server.UnderlyingSystem
             {
                 return ServiceResult.Create(ex, StatusCodes.BadMethodInvalid, string.Empty);
             }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                return ServiceResult.Create(ex, StatusCodes.BadInvalidArgument, string.Empty);
+            }
             catch (Exception ex)
             {
                 return ServiceResult.Create(ex, StatusCodes.BadUnexpectedError, string.Empty);

@@ -4,6 +4,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
+using chd.OpcUa.Base.Extensions;
 
 namespace chd.OpcUa.Server.UnderlyingSystem
 {
@@ -32,61 +33,18 @@ namespace chd.OpcUa.Server.UnderlyingSystem
             _methods.Add(method);
         }
 
-        public void CreateTag(string tagName, UnderlyingSystemDataType dataType, UnderlyingSystemTagType tagType, string engineeringUnits, bool writeable)
+        public void CreateTag<T>(string tagName, string description, bool writeable, string[] labels = null)
         {
             var tag = new UnderlyingSystemTag
             {
                 Block = this,
                 Name = tagName,
-                EngineeringUnits = engineeringUnits,
-                DataType = dataType,
-                TagType = tagType,
+                Description = description,
+                Type = typeof(T),
                 IsWriteable = writeable,
-                Labels = null,
-                EuRange = null
+                Labels = labels,
             };
-
-            switch (tagType)
-            {
-                case UnderlyingSystemTagType.Analog:
-                    {
-                        tag.Description = "An analog value.";
-                        tag.TagType = UnderlyingSystemTagType.Analog;
-                        tag.EuRange = new double[] { 100, 0 };
-                        break;
-                    }
-
-                case UnderlyingSystemTagType.Digital:
-                    {
-                        tag.Description = "A digital value.";
-                        tag.TagType = UnderlyingSystemTagType.Digital;
-                        tag.Labels = new string[] { "Online", "Offline" };
-                        break;
-                    }
-
-                case UnderlyingSystemTagType.Enumerated:
-                    {
-                        tag.Description = "An enumerated value.";
-                        tag.TagType = UnderlyingSystemTagType.Enumerated;
-                        tag.Labels = new string[] { "Red", "Yellow", "Green" };
-                        break;
-                    }
-
-                default:
-                    {
-                        tag.Description = "A generic value.";
-                        break;
-                    }
-            }
-
-            switch (tag.DataType)
-            {
-                case UnderlyingSystemDataType.Integer1: { tag.Value = (sbyte)0; break; }
-                case UnderlyingSystemDataType.Integer2: { tag.Value = (short)0; break; }
-                case UnderlyingSystemDataType.Integer4: { tag.Value = (int)0; break; }
-                case UnderlyingSystemDataType.Real4: { tag.Value = (float)0; break; }
-                case UnderlyingSystemDataType.String: { tag.Value = string.Empty; break; }
-            }
+            tag.Value = tag.Type.IsEnum ? 0 : tag.Type.IsValueType ? new Variant(Activator.CreateInstance(tag.Type)) : null;
             _tags.Add(tag);
             Timestamp = DateTime.UtcNow;
         }
@@ -104,71 +62,17 @@ namespace chd.OpcUa.Server.UnderlyingSystem
                 return StatusCodes.BadNodeIdUnknown;
             }
 
-            switch (tag.DataType)
+            var val = value.GetValue();
+            if (val.GetType() != tag.Type)
             {
-                case UnderlyingSystemDataType.Integer1:
-                    {
-                        if (!value.TryGetValue(out sbyte int1Value))
-                        {
-                            return StatusCodes.BadTypeMismatch;
-                        }
-
-                        tag.Value = int1Value;
-                        break;
-                    }
-
-                case UnderlyingSystemDataType.Integer2:
-                    {
-                        if (!value.TryGetValue(out short int2Value))
-                        {
-                            return StatusCodes.BadTypeMismatch;
-                        }
-
-                        tag.Value = int2Value;
-                        break;
-                    }
-
-                case UnderlyingSystemDataType.Integer4:
-                    {
-                        if (!value.TryGetValue(out int int4Value))
-                        {
-                            return StatusCodes.BadTypeMismatch;
-                        }
-
-                        tag.Value = int4Value;
-                        break;
-                    }
-
-                case UnderlyingSystemDataType.Real4:
-                    {
-                        if (!value.TryGetValue(out float real4Value))
-                        {
-                            return StatusCodes.BadTypeMismatch;
-                        }
-
-                        tag.Value = real4Value;
-                        break;
-                    }
-
-                case UnderlyingSystemDataType.String:
-                    {
-                        if (!value.TryGetValue(out string stringValue))
-                        {
-                            return StatusCodes.BadTypeMismatch;
-                        }
-
-                        tag.Value = stringValue;
-                        break;
-                    }
+                return StatusCodes.BadTypeMismatch;
             }
+
+            tag.Value = new Variant(val);
 
             tag.Timestamp = DateTime.UtcNow;
 
-            // raise notification.
-            if (tag is not null)
-            {
-                OnTagsChanged?.Invoke(this, tag);
-            }
+            OnTagsChanged?.Invoke(this, tag);
 
             return StatusCodes.Good;
         }

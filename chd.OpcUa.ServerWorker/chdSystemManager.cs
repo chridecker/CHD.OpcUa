@@ -6,10 +6,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
+using chd.OpcUa.Server;
+using chd.OpcUa.ServerWorker;
 using Opc.Ua;
 using Opc.Ua.Server;
 
-namespace chd.OpcUa.Server
+namespace chd.OpcUa.ServerWorker
 {
     public class chdSystemManager : UnderlyingSystemManager
     {
@@ -83,88 +85,53 @@ namespace chd.OpcUa.Server
             {
                 case "FlowSensor":
                     {
-                        block.CreateTag("Measurement", UnderlyingSystemDataType.Real4, UnderlyingSystemTagType.Analog,
-                            "liters/sec", false);
-                        block.CreateTag("Online", UnderlyingSystemDataType.Integer1, UnderlyingSystemTagType.Digital, null,
-                            false);
+                        block.CreateTag<float>("Measurement", "liters/sec", false);
+                        block.CreateTag<ESystemState>("Status", "", false, Enum.GetNames<ESystemState>());
                         break;
                     }
 
                 case "LevelSensor":
                     {
-                        block.CreateTag("Measurement", UnderlyingSystemDataType.Real4, UnderlyingSystemTagType.Analog,
-                            "liters", false);
-                        block.CreateTag("Online", UnderlyingSystemDataType.Integer1, UnderlyingSystemTagType.Digital, null,
-                            false);
+                        block.CreateTag<float>("Measurement", "liters", false);
+                        block.CreateTag<ESystemState>("Status", "", false, Enum.GetNames<ESystemState>());
                         break;
                     }
 
                 case "Controller":
                     {
-                        block.CreateTag("SetPoint", UnderlyingSystemDataType.Real4, UnderlyingSystemTagType.Normal, null,
-                            true);
-                        block.CreateTag("Measurement", UnderlyingSystemDataType.Real4, UnderlyingSystemTagType.Normal, null,
-                            false);
-                        block.CreateTag("Output", UnderlyingSystemDataType.Real4, UnderlyingSystemTagType.Normal, null,
-                            false);
-                        block.CreateTag("Status", UnderlyingSystemDataType.Integer4, UnderlyingSystemTagType.Enumerated,
-                            null, false);
+                        block.CreateTag<int>("SetPoint", "", true);
+                        block.CreateTag<float>("Measurement", "liters", false);
+                        block.CreateTag<int>("Output", "", false);
+                        block.CreateTag<ESystemState>("Status", "", false, Enum.GetNames<ESystemState>());
                         break;
                     }
 
                 case "CustomController":
                     {
-                        block.CreateTag("Input1", UnderlyingSystemDataType.Real4, UnderlyingSystemTagType.Normal, null,
-                            true);
-                        block.CreateTag("Input2", UnderlyingSystemDataType.Real4, UnderlyingSystemTagType.Normal, null,
-                            true);
-                        block.CreateTag("Input3", UnderlyingSystemDataType.Real4, UnderlyingSystemTagType.Normal, null,
-                            true);
-                        block.CreateTag("Output", UnderlyingSystemDataType.Real4, UnderlyingSystemTagType.Normal, null,
-                            false);
+                        block.CreateTag<bool>("Input1", "", true);
+                        block.CreateTag<int>("Input2", "", true);
+                        block.CreateTag<decimal>("Input3", "", true);
+                        block.CreateTag<string>("Input4", "", true);
+                        block.CreateTag<ESystemState>("Status", "", false, Enum.GetNames<ESystemState>());
 
-                        block.CreateMethod(nameof(StartCustomController), HandleCustomController);
-                        block.MethodExecution += Block_MethodExecution;
+                        block.CreateMethod(nameof(StartCustomController), (method) =>
+                        {
+                            method.CreateInputArgument("Initial State", typeof(uint));
+                            method.CreateInputArgument("Final State", typeof(uint));
+
+                            method.CreateOutputArgument("Initial State", typeof(uint));
+                            method.CreateOutputArgument("Final State", typeof(uint));
+                        });
                         break;
                     }
             }
         }
 
-        private async ValueTask<object[]> Block_MethodExecution(UnderlyingSystemMethod method, object[] inputs, CancellationToken cancellationToken)
-        {
-            var execution = this.GetType().GetMethod(method.Name);
-            if (execution is null)
-            {
-                throw new NotImplementedException($"Konnte die Methode {method.Name} nicht finden!");
-            }
 
-            var result = execution.Invoke(this, [inputs, cancellationToken]);
-            if (execution.ReturnType == typeof(ValueTask<object[]>))
-            {
-                return await (ValueTask<object[]>)result;
-            }
-            if (execution.ReturnType == typeof(ValueTask))
-            {
-                await (ValueTask)result;
-            }
-            if (execution.ReturnType == typeof(object[]))
-            {
-                return (object[])result;
-            }
-            return Array.Empty<object>();
-        }
 
-        public ValueTask<object[]> StartCustomController(object[] inputs, CancellationToken cancellationToken)
+        public ValueTask<object[]> StartCustomController(uint initalState, uint finalState, CancellationToken cancellationToken)
         {
-            return ValueTask.FromResult(inputs);
-        }
-
-        private static void HandleCustomController(UnderlyingSystemMethod method)
-        {
-            method.CreateInputArgument("Initial State", typeof(uint));
-            method.CreateInputArgument("Final State", typeof(uint));
-            method.CreateOutputArgument("Initial State", typeof(uint));
-            method.CreateOutputArgument("Final State", typeof(uint));
+            return ValueTask.FromResult(new object[] { finalState, initalState });
         }
     }
 }

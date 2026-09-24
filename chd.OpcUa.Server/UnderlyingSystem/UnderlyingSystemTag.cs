@@ -12,11 +12,7 @@ namespace chd.OpcUa.Server.UnderlyingSystem
         public string Name { get; set; }
         public string Description { get; set; }
 
-        public string EngineeringUnits { get; set; }
-
-        public UnderlyingSystemDataType DataType { get; set; }
-
-        public UnderlyingSystemTagType TagType { get; set; }
+        public Type Type { get; set; }
 
         public Variant Value { get; set; }
 
@@ -24,7 +20,6 @@ namespace chd.OpcUa.Server.UnderlyingSystem
 
         public bool IsWriteable { get; set; }
 
-        public double[] EuRange { get; set; }
         public string[] Labels { get; set; }
 
         public UnderlyingSystemTag CreateSnapshot() => (UnderlyingSystemTag)MemberwiseClone();

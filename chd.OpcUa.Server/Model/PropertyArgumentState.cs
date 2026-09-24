@@ -5,6 +5,7 @@ using Opc.Ua.Export;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using chd.OpcUa.Base.Extensions;
 using LocalizedText = Opc.Ua.LocalizedText;
 
 namespace chd.OpcUa.Server.Model
@@ -30,7 +31,7 @@ namespace chd.OpcUa.Server.Model
             for (int i = 0; i < definedArgs.Count; i++)
             {
                 var arg = definedArgs[i];
-                args[i] = new Argument(arg.Name, arg.GetDataType(), arg.GetValueRank(), arg.Description);
+                args[i] = new Argument(arg.Name, arg.Type.GetDataType(), ValueRanks.Scalar, arg.Description);
             }
             this.Value = args.ToArrayOf();
         }

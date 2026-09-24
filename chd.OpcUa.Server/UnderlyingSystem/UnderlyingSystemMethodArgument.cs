@@ -21,29 +21,5 @@ namespace chd.OpcUa.Server.UnderlyingSystem
             Name = name;
             Type = type;
         }
-
-        public NodeId GetDataType() => Type switch
-        {
-            Type x when x == typeof(bool) => DataTypeIds.Boolean,
-            Type x when x == typeof(sbyte) => DataTypeIds.SByte,
-            Type x when x == typeof(byte) => DataTypeIds.Byte,
-            Type x when x == typeof(short) => DataTypeIds.Int16,
-            Type x when x == typeof(ushort) => DataTypeIds.UInt16,
-            Type x when x == typeof(int) => DataTypeIds.Int32,
-            Type x when x == typeof(uint) => DataTypeIds.UInt32,
-            Type x when x == typeof(long) => DataTypeIds.Int64,
-            Type x when x == typeof(float) => DataTypeIds.Float,
-            Type x when x == typeof(double) => DataTypeIds.Double,
-            Type x when x == typeof(decimal) => DataTypeIds.Decimal,
-            Type x when x == typeof(DateTime) => DataTypeIds.DateTime,
-            Type x when x == typeof(string) => DataTypeIds.String,
-            Type x when x == typeof(Guid) => DataTypeIds.Guid,
-            _ => DataTypeIds.BaseDataType
-        };
-
-        public int GetValueRank()
-        {
-            return ValueRanks.Scalar;
-        }
     }
 }

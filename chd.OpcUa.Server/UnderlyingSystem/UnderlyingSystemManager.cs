@@ -66,8 +66,44 @@ namespace chd.OpcUa.Server
             foreach (var blockName in _segments.Flatten().SelectMany(s => s.Blocks).Distinct())
             {
                 var block = await CreateBlockAsync(blockName, cancellationToken);
+                block.MethodExecution += Block_MethodExecution;
                 _blocks[blockName] = block;
             }
+        }
+        private async ValueTask<object[]> Block_MethodExecution(UnderlyingSystemMethod method, object[] inputs, CancellationToken cancellationToken)
+        {
+            var execution = this.GetType().GetMethod(method.Name);
+            if (execution is null)
+            {
+                throw new NotImplementedException($"Konnte die Methode {method.Name} nicht finden!");
+            }
+
+            var inputParams = execution.GetParameters();
+            object[] inputsArray = inputs;
+            if (!(inputParams.Length == inputsArray.Length || inputParams.Length == inputsArray.Length + 1))
+            {
+                throw new ArgumentOutOfRangeException("Die Inputargumente passen nicht");
+            }
+
+            if (inputParams.Length == inputsArray.Length + 1)
+            {
+                inputsArray = inputs.Append(cancellationToken).ToArray();
+            }
+
+            var result = execution.Invoke(this, inputsArray);
+            if (execution.ReturnType == typeof(ValueTask<object[]>))
+            {
+                return await (ValueTask<object[]>)result;
+            }
+            if (execution.ReturnType == typeof(ValueTask))
+            {
+                await (ValueTask)result;
+            }
+            if (execution.ReturnType == typeof(object[]))
+            {
+                return (object[])result;
+            }
+            return Array.Empty<object>();
         }
     }
 }
