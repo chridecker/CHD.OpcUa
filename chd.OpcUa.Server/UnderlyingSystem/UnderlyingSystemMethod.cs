@@ -5,21 +5,25 @@ using Opc.Ua;
 
 namespace chd.OpcUa.Server.UnderlyingSystem
 {
-    public class UnderlyingSystemMethod
+    public class UnderlyingSystemMethod : UnderlyingSystemBase
     {
         private readonly Func<UnderlyingSystemMethod, object[], CancellationToken, ValueTask<object[]>> _execution;
-        public string Identifier => this.Block.Identifier + "#" + Name;
-        public string Name { get; set; }
+
+        public override string Identifier => this.Block.Identifier + "#" + Name;
+        public bool CanExecute { get; }
+
         public UnderlyingSystemBlock Block { get; set; }
 
         public List<UnderlyingSystemMethodArgument> InputArguments { get; } = [];
         public List<UnderlyingSystemMethodArgument> OutputArguments { get; } = [];
 
-        public UnderlyingSystemMethod(string name, UnderlyingSystemBlock block, Func<UnderlyingSystemMethod, object[], CancellationToken, ValueTask<object[]>> execution)
+        public UnderlyingSystemMethod(string name,string description,bool canExecute, UnderlyingSystemBlock block, Func<UnderlyingSystemMethod, object[], CancellationToken, ValueTask<object[]>> execution)
+        :base(name)
         {
             _execution = execution;
-            Name = name;
             Block = block;
+            Description = description;
+            CanExecute = canExecute;
         }
 
         public void CreateInputArgument(string name, Type type) => InputArguments.Add(new(this, name, type));

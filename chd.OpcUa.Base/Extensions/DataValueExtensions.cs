@@ -23,7 +23,7 @@ namespace chd.OpcUa.Base.Extensions
             Type x when x == typeof(DateTime) => DataTypeIds.DateTime,
             Type x when x == typeof(string) => DataTypeIds.String,
             Type x when x == typeof(Guid) => DataTypeIds.Guid,
-            Type x when x.IsEnum => DataTypeIds.EnumField,
+            Type x when x.IsEnum => DataTypeIds.String,
             _ => DataTypeIds.BaseDataType
         };
 
@@ -139,6 +139,74 @@ namespace chd.OpcUa.Base.Extensions
                         return value.WrappedValue.Value;
                     }
             }
+        }
+
+        public static Variant ConvertToVariant(this object? value)
+        {
+            if (value is null)
+            {
+                return Variant.Null;
+            }
+
+            if (value is Variant variant)
+            {
+                return variant;
+            }
+
+            return value switch
+            {
+                bool v => Variant.From(v),
+
+                sbyte v => Variant.From(v),
+                byte v => Variant.From(v),
+                short v => Variant.From(v),
+                ushort v => Variant.From(v),
+                int v => Variant.From(v),
+                uint v => Variant.From(v),
+                long v => Variant.From(v),
+                ulong v => Variant.From(v),
+
+                float v => Variant.From(v),
+                double v => Variant.From(v),
+
+                string v => Variant.From(v),
+                DateTime v => Variant.From(v),
+                Guid v => Variant.From((Uuid)v),
+
+                NodeId v => Variant.From(v),
+                ExpandedNodeId v => Variant.From(v),
+                StatusCode v => Variant.From(v),
+                QualifiedName v => Variant.From(v),
+                LocalizedText v => Variant.From(v),
+                ExtensionObject v => Variant.From(v),
+
+                bool[] v => Variant.From(v),
+
+                sbyte[] v => Variant.From(v),
+                byte[] v => Variant.From(v),
+                short[] v => Variant.From(v),
+                ushort[] v => Variant.From(v),
+                int[] v => Variant.From(v),
+                uint[] v => Variant.From(v),
+                long[] v => Variant.From(v),
+                ulong[] v => Variant.From(v),
+
+                float[] v => Variant.From(v),
+                double[] v => Variant.From(v),
+
+                string[] v => Variant.From(v),
+
+                NodeId[] v => Variant.From(v),
+                ExpandedNodeId[] v => Variant.From(v),
+                StatusCode[] v => Variant.From(v),
+                QualifiedName[] v => Variant.From(v),
+                LocalizedText[] v => Variant.From(v),
+                ExtensionObject[] v => Variant.From(v),
+
+                _ => throw new ArgumentException(
+                    $"Typ '{value.GetType().FullName}' kann nicht in einen OPC UA Variant konvertiert werden.",
+                    nameof(value))
+            };
         }
 
         public static Variant ChangeType(this DataValue value, object newValue)

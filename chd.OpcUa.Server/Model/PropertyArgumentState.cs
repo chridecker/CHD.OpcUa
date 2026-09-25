@@ -20,6 +20,7 @@ namespace chd.OpcUa.Server.Model
             NodeId = nodeId;
             BrowseName = new QualifiedName(name);
             DisplayName = new LocalizedText(name);
+            Description = new LocalizedText(name);
             TypeDefinitionId = VariableTypeIds.PropertyType;
             ReferenceTypeId = ReferenceTypeIds.HasProperty;
             DataType = DataTypeIds.Argument;

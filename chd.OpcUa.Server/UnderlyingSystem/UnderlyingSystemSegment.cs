@@ -4,10 +4,8 @@ using System.Text;
 
 namespace chd.OpcUa.Server.UnderlyingSystem
 {
-    public class UnderlyingSystemSegment
+    public class UnderlyingSystemSegment : UnderlyingSystemBase
     {
-        public string Name { get; set; }
-
         public UnderlyingSystemSegment? Parent { get; set; }
 
         public IList<UnderlyingSystemSegment> Children { get; set; } = [];
@@ -32,9 +30,8 @@ namespace chd.OpcUa.Server.UnderlyingSystem
             }
         }
 
-        public UnderlyingSystemSegment(string name, UnderlyingSystemSegment? parent = null)
+        public UnderlyingSystemSegment(string name, UnderlyingSystemSegment? parent = null) : base(name)
         {
-            Name = name;
             Parent = parent;
         }
     }

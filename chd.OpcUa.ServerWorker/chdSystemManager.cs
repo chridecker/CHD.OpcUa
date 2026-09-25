@@ -61,7 +61,7 @@ namespace chd.OpcUa.ServerWorker
 
         protected override async ValueTask<UnderlyingSystemBlock> CreateBlockAsync(string blockName, CancellationToken cancellationToken)
         {
-            var block = new UnderlyingSystemBlock(blockName, GetBockType(blockName));
+            var block = new UnderlyingSystemBlock(blockName, "", GetBockType(blockName));
             HandleBlock(block);
             return block;
         }
@@ -114,7 +114,7 @@ namespace chd.OpcUa.ServerWorker
                         block.CreateTag<string>("Input4", "", true);
                         block.CreateTag<ESystemState>("Status", "", false, Enum.GetNames<ESystemState>());
 
-                        block.AddMethod(nameof(StartCustomController), (method) =>
+                        block.AddMethod(nameof(StartCustomController),"", true,(method) =>
                         {
                             method.CreateInputArgument("Initial State", typeof(uint));
                             method.CreateInputArgument("Final State", typeof(uint));

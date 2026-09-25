@@ -5,20 +5,14 @@ using System.Text;
 
 namespace chd.OpcUa.Server.UnderlyingSystem
 {
-    public class UnderlyingSystemMethodArgument
+    public class UnderlyingSystemMethodArgument : UnderlyingSystemBase
     {
-        private readonly string _identifier;
         public UnderlyingSystemMethod Method { get; }
-        public string Name { get; set; }
         public Type Type { get; set; }
 
-        public string Description { get; set; }
-
-
-        public UnderlyingSystemMethodArgument(UnderlyingSystemMethod method, string name, Type type)
+        public UnderlyingSystemMethodArgument(UnderlyingSystemMethod method, string name, Type type) : base(name)
         {
             Method = method;
-            Name = name;
             Type = type;
         }
     }

@@ -144,6 +144,12 @@ namespace chd.OpcUa.Server
             {
                 execution.Invoke(instance, inputsArray);
             }
+            if (execution.ReturnType != typeof(void)
+                && execution.ReturnType.IsValueType && !execution.ReturnType.IsGenericType)
+            {
+                return [execution.Invoke(instance, inputsArray)];
+            }
+
             return [];
         }
     }

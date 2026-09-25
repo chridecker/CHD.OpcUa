@@ -9,27 +9,25 @@ using chd.OpcUa.Base.Extensions;
 
 namespace chd.OpcUa.Server.UnderlyingSystem
 {
-    public class UnderlyingSystemBlock
+    public class UnderlyingSystemBlock : UnderlyingSystemBase
     {
         private readonly ConcurrentBag<UnderlyingSystemTag> _tags = [];
         private readonly ConcurrentBag<UnderlyingSystemMethod> _methods = [];
+
         private event EventHandler<UnderlyingSystemTag> OnTagsChanged;
 
-        public string Name { get; set; }
         public string BlockType { get; set; }
-        public string NameSpace { get; set; }
-        public string Identifier => Name;
         public DateTime Timestamp { get; set; }
 
-        public UnderlyingSystemBlock(string name, string blockType)
+        public UnderlyingSystemBlock(string name, string description, string blockType) : base(name)
         {
-            Name = name;
             BlockType = blockType;
+            Description = description;
         }
 
-        public void AddMethod(string name, Action<UnderlyingSystemMethod> handleMethod = null)
+        public void AddMethod(string name, string description, bool canExecute, Action<UnderlyingSystemMethod> handleMethod = null)
         {
-            var method = new UnderlyingSystemMethod(name, this, this.MethodExecuted);
+            var method = new UnderlyingSystemMethod(name, description, canExecute, this, this.MethodExecuted);
             handleMethod?.Invoke(method);
             _methods.Add(method);
         }
@@ -40,13 +38,11 @@ namespace chd.OpcUa.Server.UnderlyingSystem
             Func<Variant, CancellationToken, ValueTask> writeValue = null,
             CancellationToken cancellationToken = default)
         {
-            var tag = new UnderlyingSystemTag
+            var tag = new UnderlyingSystemTag(tagName, writeable)
             {
                 Block = this,
-                Name = tagName,
                 Description = description,
                 Type = type,
-                IsWriteable = writeable,
                 Labels = labels,
                 ReadFunc = readValue,
                 WriteFunc = writeValue

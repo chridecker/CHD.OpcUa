@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
-using chd.OpcUa.Server;
 using chd.OpcUa.Server.Interfaces;
+using chd.OpcUa.Server.ObjectSystem;
 using chd.OpcUa.ServerWorker.UaServerObjects;
 
 namespace chd.OpcUa.ServerWorker
@@ -13,7 +13,9 @@ namespace chd.OpcUa.ServerWorker
         {
             var lst = new List<IUaServerObject>()
             {
-                new Calculator("CHDCalc")
+                new Calculator("CHDCalc"),
+                new UaTimer("CHDTimer1"),
+                new UaTimer("CHDTimer2"),
             };
             return lst;
         }

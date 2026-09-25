@@ -38,18 +38,18 @@ namespace chd.OpcUa.Server.Extensions
                  .AddNodeManager<NodeManagerFactory>()
                  .ConfigureRoles(roles =>
                  {
-                     roles.Roles.Add(new RoleDefinitionOptions()
-                     {
-                         Name = "Administrator",
-                         Identities =
-                         {
-                             new RoleIdentityMappingOptions()
-                             {
-                                 Criteria = "admin",
-                                 CriteriaType = IdentityCriteriaType.UserName
-                             }
-                     }
-                     });
+                     //roles.Roles.Add(new RoleDefinitionOptions()
+                     //{
+                     //    Name = "Administrator",
+                     //    Identities =
+                     //    {
+                     //        new RoleIdentityMappingOptions()
+                     //        {
+                     //            Criteria = "admin",
+                     //            CriteriaType = IdentityCriteriaType.UserName
+                     //        }
+                     //}
+                     //});
                  })
                  .AddIdentityAuthenticator((_,_)=> new UserNamePasswordAuthenticator((handler,ct) =>
                  {

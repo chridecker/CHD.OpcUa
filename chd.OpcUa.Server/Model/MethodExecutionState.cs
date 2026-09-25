@@ -25,7 +25,7 @@ namespace chd.OpcUa.Server.Model
             Description = LocalizedText.Null;
             ReferenceTypeId = ReferenceTypeIds.HasComponent;
             UserExecutable = true;
-            Executable = true;
+            Executable = _method.CanExecute;
 
             if (_method.InputArguments.Any())
             {

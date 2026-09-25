@@ -1,6 +1,5 @@
 ﻿using chd.OpcUa.Base.Extensions;
 using chd.OpcUa.Server.Interfaces;
-using chd.OpcUa.Server.ObjectSystem;
 using chd.OpcUa.Server.UnderlyingSystem;
 using Opc.Ua;
 using Opc.Ua.Server;
@@ -11,7 +10,7 @@ using System.ComponentModel;
 using System.Reflection;
 using System.Text;
 
-namespace chd.OpcUa.Server
+namespace chd.OpcUa.Server.ObjectSystem
 {
     public abstract class ObjectSystemManager : UnderlyingSystemManager
     {
@@ -41,7 +40,7 @@ namespace chd.OpcUa.Server
             if (entry.Value.Any())
             {
                 var instance = entry.Value.FirstOrDefault(x => x.Name == blockName);
-                block = new UnderlyingSystemBlock(blockName, entry.Key);
+                block = new UnderlyingSystemBlock(blockName, instance.Description, entry.Key);
                 await HandleSystemObject(block, instance);
             }
             return block;
@@ -50,8 +49,8 @@ namespace chd.OpcUa.Server
         protected override (MethodInfo? method, object instance) GetMethodInfo(UnderlyingSystemMethod method)
         {
             var entry = _objectStore.FirstOrDefault(x => x.Value.Any(a => a.Name == method.Block.Name));
-            var instance = entry.Value.FirstOrDefault(x => x.Name == method.Block.Name);
 
+            var instance = entry.Value.FirstOrDefault(x => x.Name == method.Block.Name);
 
             var methodInfo = instance?.GetType().GetMethod(method.Name) ??
             instance.GetType().GetMethods()
@@ -76,7 +75,7 @@ namespace chd.OpcUa.Server
             {
                 var attribute = method.GetCustomAttribute<ObjectSystemMethodAttribute>();
 
-                block.AddMethod(attribute?.DisplayName ?? method.Name, HandleSystemMethod);
+                block.AddMethod(attribute?.DisplayName ?? method.Name, attribute?.Description ?? string.Empty, attribute.CanExecute, HandleSystemMethod);
             }
 
             if (instance is INotifyPropertyChanged notifyPropertyChanged)
@@ -134,7 +133,11 @@ namespace chd.OpcUa.Server
         private ValueTask<Variant> ReadValueAsync(IUaServerObject instance, PropertyInfo propInfo, CancellationToken cancellationToken)
         {
             var val = propInfo.GetValue(instance);
-            return ValueTask.FromResult(new Variant(val));
+            if (propInfo.PropertyType.IsEnum)
+            {
+                return ValueTask.FromResult(Enum.GetName(propInfo.PropertyType, val).ConvertToVariant());
+            }
+            return ValueTask.FromResult(val.ConvertToVariant());
         }
 
         private ValueTask WriteValueAsync(IUaServerObject instance, PropertyInfo propInfo, Variant value, CancellationToken cancellationToken)

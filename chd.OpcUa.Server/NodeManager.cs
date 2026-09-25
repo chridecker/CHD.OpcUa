@@ -44,8 +44,8 @@ namespace chd.OpcUa.ServerWorker
                 }
 
                 var segmentId = ModelUtils.ConstructIdForSegment(segment.Identifier, NamespaceIndex);
-
-                references.Add(new NodeStateReference(ReferenceTypeIds.Organizes, false, segmentId));
+                var node = new NodeStateReference(ReferenceTypeIds.Organizes, false, segmentId);
+                references.Add(node);
             }
 
             var builder = CreateFluentBuilder(NamespaceIndex);

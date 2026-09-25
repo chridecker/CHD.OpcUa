@@ -10,10 +10,12 @@ namespace chd.OpcUa.Server.ObjectSystem
     public abstract class BaseUaServerObject : IUaServerObject, INotifyPropertyChanged
     {
         public string Name { get; }
+        public string Description { get; }
 
-        protected BaseUaServerObject(string name)
+        protected BaseUaServerObject(string name, string description = null)
         {
             Name = name;
+            Description = description;
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;

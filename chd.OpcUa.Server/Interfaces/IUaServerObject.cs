@@ -7,5 +7,6 @@ namespace chd.OpcUa.Server.Interfaces
     public interface IUaServerObject
     {
         public string Name { get; }
+        public string Description { get; }
     }
 }
