@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
 using chd.OpcUa.Base.Extensions;
+using chd.OpcUa.Contracts;
 
 namespace chd.OpcUa.Server.UnderlyingSystem
 {
@@ -13,16 +14,25 @@ namespace chd.OpcUa.Server.UnderlyingSystem
     {
         private readonly ConcurrentBag<UnderlyingSystemTag> _tags = [];
         private readonly ConcurrentBag<UnderlyingSystemMethod> _methods = [];
+        private readonly ConcurrentBag<UnderlyingSystemEvent> _events = [];
 
         private event EventHandler<UnderlyingSystemTag> OnTagsChanged;
+        private Func<UnderlyingSystemEvent, CancellationToken, ValueTask> OnEventTriggered;
 
         public string BlockType { get; set; }
         public DateTime Timestamp { get; set; }
+
 
         public UnderlyingSystemBlock(string name, string description, string blockType) : base(name)
         {
             BlockType = blockType;
             Description = description;
+        }
+
+        public void AddEvent(string name, string description)
+        {
+            var evt = new UnderlyingSystemEvent(name, description);
+            _events.Add(evt);
         }
 
         public void AddMethod(string name, string description, bool canExecute, Action<UnderlyingSystemMethod> handleMethod = null)
@@ -68,6 +78,8 @@ namespace chd.OpcUa.Server.UnderlyingSystem
         public IList<UnderlyingSystemTag> GetTags() => _tags.Select(s => s.CreateSnapshot()).ToList();
 
         public IList<UnderlyingSystemMethod> GetMethods() => _methods.Select(s => s.CreateSnapshot()).ToList();
+
+        public IList<UnderlyingSystemEvent> GetEvents() => _events.Select(s => s.CreateSnapshot()).ToList();
 
         public async ValueTask<StatusCode> WriteTagValueAsync(string tagName, Variant value, CancellationToken cancellationToken)
         {
@@ -125,6 +137,16 @@ namespace chd.OpcUa.Server.UnderlyingSystem
             OnTagsChanged = null;
         }
 
+        public void SubscribeEvents(Func<UnderlyingSystemEvent, CancellationToken, ValueTask> callback)
+        {
+            OnEventTriggered = callback;
+        }
+
+        public void UnSubscribeEvents()
+        {
+            OnEventTriggered = null;
+        }
+
         public void TagChanged(string tagName)
         {
             var tag = _tags.FirstOrDefault(x => x.Name == tagName);
@@ -134,7 +156,21 @@ namespace chd.OpcUa.Server.UnderlyingSystem
             }
         }
 
+        public ValueTask TriggerEvent(string eventIdentifier, string message, CancellationToken cancellationToken)
+        {
+            var evt = _events.FirstOrDefault(x => x.Identifier == eventIdentifier);
+            if (evt is not null
+                && OnEventTriggered is not null)
+            {
+                evt.Message = message;
+                return OnEventTriggered(evt, cancellationToken);
+            }
+
+            return ValueTask.CompletedTask;
+        }
+
         public event UnderlyingSystemMethodExcutionHandler MethodExecution;
+
 
         private ValueTask<object[]> MethodExecuted(UnderlyingSystemMethod method, object[] inputs, CancellationToken cancellationToken)
         {

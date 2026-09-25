@@ -36,7 +36,7 @@ namespace chd.OpcUa.Worker
             }
         }
 
-        private async Task Client_EventAlarmNotification(object? sender, Contracts.EventAlarmEventArgs e, CancellationToken cancellationToken)
+        private async ValueTask Client_EventAlarmNotification(object? sender, Contracts.EventAlarmEventArgs e, CancellationToken cancellationToken)
         {
             try
             {
@@ -64,7 +64,7 @@ namespace chd.OpcUa.Worker
             }
         }
 
-        private async Task Client_MonitoredItemNotification(object? sender, Contracts.MonitoredItemEventArgs e, CancellationToken cancellationToken)
+        private async ValueTask Client_MonitoredItemNotification(object? sender, Contracts.MonitoredItemEventArgs e, CancellationToken cancellationToken)
         {
             logger?.LogInformation($"Item {e.Node} [{e.Value}]");
         }

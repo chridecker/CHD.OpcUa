@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text;
-using chd.OpcUa.Server.Interfaces;
+using chd.OpcUa.Contracts.Interfaces;
 
 namespace chd.OpcUa.Server.ObjectSystem
 {

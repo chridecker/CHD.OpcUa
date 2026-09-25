@@ -1,4 +1,4 @@
-﻿using chd.OpcUa.Server.Interfaces;
+﻿using chd.OpcUa.Contracts.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Text;

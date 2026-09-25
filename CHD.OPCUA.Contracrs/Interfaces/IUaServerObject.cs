@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace chd.OpcUa.Server.Interfaces
+namespace chd.OpcUa.Contracts.Interfaces
 {
     public interface IUaServerObject
     {

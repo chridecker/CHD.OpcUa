@@ -280,9 +280,10 @@ namespace chd.OpcUa.Client
                                            .ConfigureAwait(false))
                         {
                             var args = await _session.ProcessNotificationAsync(_conditionStates, _filtersByHandle, notification, cancellationToken);
-                            if (args is not null)
+                            if (args is not null
+                                && EventAlarmNotification is not null)
                             {
-                                await this.EventAlarmNotification?.Invoke(this, args);
+                                await this.EventAlarmNotification.Invoke(this, args);
                             }
                         }
                     }
@@ -293,9 +294,13 @@ namespace chd.OpcUa.Client
 
         private async ValueTask NotifyMonitoredItemAsync(ISubscription subscription, uint seqNr, DateTime publishTime, DataValueChange[] changes)
         {
-            foreach (var change in changes)
+            if (MonitoredItemNotification is not null)
             {
-                await MonitoredItemNotification?.Invoke(this, new MonitoredItemEventArgs(change.MonitoredItem.Name, change.Value.GetValue(), publishTime));
+                foreach (var change in changes)
+                {
+                    await MonitoredItemNotification.Invoke(this,
+                        new MonitoredItemEventArgs(change.MonitoredItem.Name, change.Value.GetValue(), publishTime));
+                }
             }
         }
 

@@ -3,7 +3,6 @@ using Opc.Ua;
 using System;
 using System.Collections.Generic;
 using System.Text;
-using chd.OpcUa.Server.Interfaces;
 
 namespace chd.OpcUa.Server.Model
 {

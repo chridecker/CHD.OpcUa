@@ -1,4 +1,4 @@
-﻿using chd.OpcUa.Server.Interfaces;
+﻿using chd.OpcUa.Contracts.Interfaces;
 using chd.OpcUa.Server.UnderlyingSystem;
 using System;
 using System.Collections.Concurrent;
@@ -114,7 +114,9 @@ namespace chd.OpcUa.ServerWorker
                         block.CreateTag<string>("Input4", "", true);
                         block.CreateTag<ESystemState>("Status", "", false, Enum.GetNames<ESystemState>());
 
-                        block.AddMethod(nameof(StartCustomController),"", true,(method) =>
+                        block.AddEvent("Test", "Test");
+
+                        block.AddMethod(nameof(StartCustomController), "", true, (method) =>
                         {
                             method.CreateInputArgument("Initial State", typeof(uint));
                             method.CreateInputArgument("Final State", typeof(uint));
@@ -133,6 +135,10 @@ namespace chd.OpcUa.ServerWorker
         {
             var b = await this.FindBlockByIdentifier("CC1001", cancellationToken);
             _ = await b.WriteTagValueAsync("Input2", (int)initalState + (int)finalState, cancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+
+            await b.TriggerEvent("Test", "Did it",cancellationToken);
+
             return new object[] { finalState, initalState };
         }
     }

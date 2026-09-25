@@ -1,5 +1,4 @@
-﻿using chd.OpcUa.Server.Interfaces;
-using chd.OpcUa.Server.ObjectSystem;
+﻿using chd.OpcUa.Server.ObjectSystem;
 using System;
 using System.Collections.Generic;
 using System.Text;

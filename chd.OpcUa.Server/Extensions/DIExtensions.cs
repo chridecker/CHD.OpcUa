@@ -1,5 +1,6 @@
-﻿using chd.OpcUa.Server.Interfaces;
+﻿using chd.OpcUa.Contracts.Interfaces;
 using chd.OpcUa.Server.Options;
+using chd.OpcUa.Server.UnderlyingSystem;
 using chd.OpcUa.ServerWorker;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -95,7 +96,7 @@ namespace chd.OpcUa.Server.Extensions
             services.AddSingleton<UaServerStartup>();
             services.AddSingleton<IServerStartupTask, UaServerStartup>();
             services.AddSingleton<INamespaceManager, TNamespaceManager>();
-            services.AddSingleton<IUnderlyingSystemManager, TSystemManager>();
+            services.AddSingleton<IUnderlyingSystemManager<UnderlyingSystemSegment, UnderlyingSystemBlock, UnderlyingSystemMethod>, TSystemManager>();
 
 
 

@@ -1,17 +1,17 @@
-﻿using chd.OpcUa.Server.Interfaces;
-using chd.OpcUa.Server.UnderlyingSystem;
+﻿using chd.OpcUa.Server.UnderlyingSystem;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
+using chd.OpcUa.Contracts.Interfaces;
 using chd.OpcUa.Server.Extensions;
 using Opc.Ua;
 using Opc.Ua.Server;
 
 namespace chd.OpcUa.Server
 {
-    public abstract class UnderlyingSystemManager : IUnderlyingSystemManager
+    public abstract class UnderlyingSystemManager : IUnderlyingSystemManager<UnderlyingSystemSegment, UnderlyingSystemBlock, UnderlyingSystemMethod>
     {
         private List<UnderlyingSystemSegment> _segments;
         private ConcurrentDictionary<string, UnderlyingSystemBlock> _blocks = [];
@@ -31,6 +31,18 @@ namespace chd.OpcUa.Server
 
         public ValueTask<UnderlyingSystemSegment> FindSegmentByIdentifier(string identifier, CancellationToken cancellationToken)
             => ValueTask.FromResult(_segments.Flatten().FirstOrDefault(x => x.Identifier == identifier));
+
+        public List<UnderlyingSystemBlock> FindBlocksForSegment(UnderlyingSystemSegment segment)
+        {
+            var lst = new List<UnderlyingSystemBlock>();
+            foreach (var blockName in segment.Blocks)
+            {
+                if (_blocks.TryGetValue(blockName, out var block))
+                    lst.Add(block);
+            }
+
+            return lst;
+        }
 
         public ValueTask<UnderlyingSystemBlock> FindBlockByIdentifier(string identifier,
             CancellationToken cancellationToken)

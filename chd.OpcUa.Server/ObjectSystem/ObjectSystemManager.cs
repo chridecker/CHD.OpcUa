@@ -1,5 +1,5 @@
 ﻿using chd.OpcUa.Base.Extensions;
-using chd.OpcUa.Server.Interfaces;
+using chd.OpcUa.Contracts.Interfaces;
 using chd.OpcUa.Server.UnderlyingSystem;
 using Opc.Ua;
 using Opc.Ua.Server;

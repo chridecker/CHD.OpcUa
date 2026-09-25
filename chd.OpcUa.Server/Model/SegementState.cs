@@ -3,7 +3,6 @@ using Opc.Ua;
 using System;
 using System.Collections.Generic;
 using System.Text;
-using chd.OpcUa.Server.Interfaces;
 
 namespace chd.OpcUa.Server.Model
 {
@@ -11,7 +10,7 @@ namespace chd.OpcUa.Server.Model
     {
         public UnderlyingSystemSegment Segment { get; }
 
-        public SegmentState(NodeId nodeId, UnderlyingSystemSegment segment) : base(null)
+        public SegmentState(NodeId nodeId, UnderlyingSystemSegment segment, List<UnderlyingSystemBlock> blocks) : base(null)
         {
             Segment = segment;
             this.TypeDefinitionId = ObjectTypeIds.FolderType;
@@ -22,7 +21,7 @@ namespace chd.OpcUa.Server.Model
             this.Description = new LocalizedText(segment.Description);
             this.WriteMask = 0;
             this.UserWriteMask = 0;
-            this.EventNotifier = EventNotifiers.None;
+            this.EventNotifier = blocks?.Any(a => a.GetEvents().Any()) ?? false ? EventNotifiers.SubscribeToEvents : EventNotifiers.None;
         }
 
 

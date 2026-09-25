@@ -1,4 +1,6 @@
-﻿using chd.OpcUa.Server.UnderlyingSystem;
+﻿using chd.OpcUa.Base.Extensions;
+using chd.OpcUa.Contracts;
+using chd.OpcUa.Server.UnderlyingSystem;
 using chd.OpcUa.ServerWorker;
 using Opc.Ua;
 using Opc.Ua.Server;
@@ -6,7 +8,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
-using chd.OpcUa.Base.Extensions;
 
 namespace chd.OpcUa.Server.Model
 {
@@ -29,7 +30,7 @@ namespace chd.OpcUa.Server.Model
             this.Description = new LocalizedText(block.Description);
             this.WriteMask = 0;
             this.UserWriteMask = 0;
-            this.EventNotifier = EventNotifiers.None;
+            this.EventNotifier = block.GetEvents().Any() ? EventNotifiers.SubscribeToEvents : EventNotifiers.None;
 
             foreach (var tag in block.GetTags())
             {
@@ -47,6 +48,58 @@ namespace chd.OpcUa.Server.Model
             }
         }
 
+        public void StartMonitoring(ServerSystemContext context)
+        {
+            if (_monitoringCount == 0)
+            {
+                _block?.StartMonitoring(OnTagsChanged);
+            }
+            _monitoringCount++;
+        }
+
+        /// <summary>
+        /// Stop the monitoring the block.
+        /// </summary>
+        /// <param name="context">The context.</param>
+        public bool StopMonitoring()
+        {
+            _monitoringCount--;
+
+            if (_monitoringCount == 0)
+            {
+                _block?.StopMonitoring();
+            }
+
+            return _monitoringCount != 0;
+        }
+
+        public void SubscribeEvents()
+        {
+            _block.SubscribeEvents(OnEventTrigged);
+        }
+        public void UnSubscribeEvents()
+        {
+            _block.UnSubscribeEvents();
+        }
+
+
+        public override void ConditionRefresh(ISystemContext context, List<IFilterTarget> events, bool includeChildren)
+        {
+            foreach (var evt in this._block.GetEvents())
+            {
+                this.OnEventTrigged(evt, CancellationToken.None).AsTask().Wait();
+            }
+            base.ConditionRefresh(context, events, includeChildren);
+        }
+
+        private ValueTask OnEventTrigged(UnderlyingSystemEvent? e, CancellationToken cancellationToken)
+        {
+            var baseEvent = new EventState(this);
+            baseEvent.Initialize(_nodeManager.SystemContext, this, EventSeverity.Medium, LocalizedText.From(e.Message));
+
+            return this.ReportEventAsync(_nodeManager.SystemContext, baseEvent, cancellationToken);
+        }
+
         private async ValueTask<AttributeSimpleReadResult> OnReadTagValueAsync(ISystemContext context, NodeState node,
             CancellationToken cancellationToken)
         {
@@ -60,7 +113,6 @@ namespace chd.OpcUa.Server.Model
 
 
         }
-
         private async ValueTask<AttributeWriteResult> OnWriteTagValueAsync(
             ISystemContext context,
             NodeState node,
@@ -80,31 +132,6 @@ namespace chd.OpcUa.Server.Model
             }
 
             return new AttributeWriteResult(ServiceResult.Good);
-        }
-
-        public void StartMonitoring(ServerSystemContext context)
-        {
-            if (_monitoringCount == 0)
-            {
-                _block?.StartMonitoring(OnTagsChanged);
-            }
-            _monitoringCount++;
-        }
-
-        /// <summary>
-        /// Stop the monitoring the block.
-        /// </summary>
-        /// <param name="context">The context.</param>
-        public bool StopMonitoring(ServerSystemContext context)
-        {
-            _monitoringCount--;
-
-            if (_monitoringCount == 0)
-            {
-                _block?.StopMonitoring();
-            }
-
-            return _monitoringCount != 0;
         }
 
         private void OnTagsChanged(object sender, UnderlyingSystemTag tag)

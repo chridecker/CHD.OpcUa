@@ -1,10 +1,11 @@
-﻿using System;
+﻿using chd.OpcUa.Contracts.Interfaces;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
 namespace chd.OpcUa.Server.UnderlyingSystem
 {
-    public abstract class UnderlyingSystemBase
+    public abstract class UnderlyingSystemBase : ISystemElement
     {
         public string Name { get; }
         public string Description { get; set; }

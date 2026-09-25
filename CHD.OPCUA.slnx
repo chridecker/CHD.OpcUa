@@ -1,7 +1,6 @@
 <Solution>
-  <Folder Name="/Solution Items/">
-    <Project Path="chd.OpcUa.Base/chd.OpcUa.Base.csproj" Id="878b419f-5db7-4386-8b50-b9373fa49a7d" />
-  </Folder>
+  <Folder Name="/Solution Items/" />
+  <Project Path="chd.OpcUa.Base/chd.OpcUa.Base.csproj" Id="878b419f-5db7-4386-8b50-b9373fa49a7d" />
   <Project Path="chd.OpcUa.Client/chd.OpcUa.Client.csproj" />
   <Project Path="chd.OpcUa.Contracrs/chd.OpcUa.Contracts.csproj" />
   <Project Path="chd.OpcUa.Server/chd.OpcUa.Server.csproj" Id="3af3d932-50cd-4b6d-8476-3fd44456e1b8" />

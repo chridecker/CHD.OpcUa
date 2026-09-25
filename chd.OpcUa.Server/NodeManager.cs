@@ -1,5 +1,4 @@
-﻿using chd.OpcUa.Server.Interfaces;
-using chd.OpcUa.Server.Model;
+﻿using chd.OpcUa.Server.Model;
 using chd.OpcUa.Server.UnderlyingSystem;
 using Opc.Ua;
 using Opc.Ua.Server;
@@ -8,18 +7,20 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
+using chd.OpcUa.Contracts.Interfaces;
 
 namespace chd.OpcUa.ServerWorker
 {
     public class NodeManager : FluentNodeManagerBase
     {
-        private readonly IUnderlyingSystemManager _underlyingSystemManager;
+        private readonly IUnderlyingSystemManager<UnderlyingSystemSegment, UnderlyingSystemBlock, UnderlyingSystemMethod> _underlyingSystemManager;
         private NodeIdDictionary<BlockState> _blocks = new();
+        private NodeIdDictionary<BlockState> _eventBlocks = new();
         private NodeIdDictionary<MethodExecutionState> _methods = new();
 
-        public IUnderlyingSystemManager UnderlyingSystemManager => this._underlyingSystemManager;
+        public IUnderlyingSystemManager<UnderlyingSystemSegment, UnderlyingSystemBlock, UnderlyingSystemMethod> UnderlyingSystemManager => this._underlyingSystemManager;
 
-        public NodeManager(IServerInternal server, ApplicationConfiguration configuration, IUnderlyingSystemManager underlyingSystemManager, params string[] namespaces)
+        public NodeManager(IServerInternal server, ApplicationConfiguration configuration, IUnderlyingSystemManager<UnderlyingSystemSegment, UnderlyingSystemBlock, UnderlyingSystemMethod> underlyingSystemManager, params string[] namespaces)
             : base(server, configuration, server.Telemetry.CreateLogger<NodeManager>(), namespaces)
         {
             _underlyingSystemManager = underlyingSystemManager;
@@ -59,6 +60,31 @@ namespace chd.OpcUa.ServerWorker
             await SealConfigurationAsync(builder, cancellationToken).ConfigureAwait(false);
         }
 
+        protected override ValueTask OnSubscribeToEventsAsync(ServerSystemContext context, MonitoredNode2 monitoredNode, bool unsubscribe,
+            CancellationToken cancellationToken = new CancellationToken())
+        {
+            if (monitoredNode is null)
+            {
+                return ValueTask.CompletedTask;
+            }
+
+            if (monitoredNode.Node is BlockState blockState)
+            {
+                if (!unsubscribe)
+                {
+                    blockState.SubscribeEvents();
+                    _eventBlocks[blockState.NodeId] = blockState;
+                }
+                else
+                {
+                    blockState.UnSubscribeEvents();
+                    _eventBlocks.TryRemove(blockState.NodeId, out _);
+                }
+            }
+
+            return base.OnSubscribeToEventsAsync(context, monitoredNode, unsubscribe, cancellationToken);
+        }
+
         private static bool IsSegmentOrBlockId(NodeId nodeId) => nodeId.IdType is IdType.String;
 
         private async ValueTask<NodeState> ResolveSegmentOrBlockAsync(ISystemContext context, NodeId nodeId, CancellationToken cancellationToken)
@@ -83,17 +109,29 @@ namespace chd.OpcUa.ServerWorker
 
                 var rootId = ModelUtils.ConstructIdForSegment(segment.Identifier, NamespaceIndex);
 
-                root = new SegmentState(rootId, segment);
+                var blocks = _underlyingSystemManager.FindBlocksForSegment(segment);
+                root = new SegmentState(rootId, segment, blocks);
+
+                if (blocks?.Any(a => a.GetEvents().Any()) ?? false)
+                {
+                    foreach (var block in blocks.Where(x => x.GetEvents().Any()))
+                    {
+                        var blockState = new BlockState(this,
+                            ModelUtils.ConstructIdForBlock(block.Identifier, NamespaceIndex), block);
+                        root.AddNotifier(context, ReferenceTypeIds.HasEventSource, false, blockState);
+                    }
+                }
             }
 
             else if (parsedNodeId.RootType == ModelUtils.Block)
             {
                 var block = await _underlyingSystemManager.FindBlockByIdentifier(parsedNodeId.RootId, cancellationToken);
-
                 if (block is null)
                 {
                     return default;
                 }
+
+                var segments = _underlyingSystemManager.FindSegmentsForBlock(block.Identifier);
 
                 var rootId = ModelUtils.ConstructIdForBlock(block.Identifier, NamespaceIndex);
 
@@ -104,6 +142,16 @@ namespace chd.OpcUa.ServerWorker
                 else
                 {
                     root = new BlockState(this, rootId, block);
+                    if (block.GetEvents().Any())
+                    {
+                        foreach (var segment in segments)
+                        {
+                            var segmentState =
+                                new SegmentState(ModelUtils.ConstructIdForSegment(segment.Identifier, NamespaceIndex),
+                                    segment, [block]);
+                            root.AddNotifier(context, ReferenceTypeIds.HasEventSource, true, segmentState);
+                        }
+                    }
                 }
             }
             else if (parsedNodeId.RootType == ModelUtils.Method)
@@ -166,8 +214,6 @@ namespace chd.OpcUa.ServerWorker
             return root.FindChildBySymbolicName(context, parsedNodeId.ComponentPath);
         }
 
-
-
         private void OnBlockMonitoredItemCreated(
             ISystemContext context,
             NodeState source,
@@ -187,7 +233,7 @@ namespace chd.OpcUa.ServerWorker
             CancellationToken cancellationToken)
         {
             if (source.GetHierarchyRoot() is BlockState block &&
-                !block.StopMonitoring((ServerSystemContext)context))
+                !block.StopMonitoring())
             {
                 _blocks.TryRemove(block.NodeId, out _);
             }
