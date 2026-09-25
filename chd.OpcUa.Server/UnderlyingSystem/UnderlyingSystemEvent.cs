@@ -8,14 +8,12 @@ namespace chd.OpcUa.Server.UnderlyingSystem
 {
     public class UnderlyingSystemEvent : UnderlyingSystemBase
     {
-
         public string Message { get; set; }
 
         public UnderlyingSystemEvent(string name, string description) : base(name)
         {
             Description = description;
         }
-
 
         public UnderlyingSystemEvent CreateSnapshot() => (UnderlyingSystemEvent)MemberwiseClone();
     }

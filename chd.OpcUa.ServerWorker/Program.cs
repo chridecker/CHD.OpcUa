@@ -4,8 +4,8 @@ using chd.OpcUa.ServerWorker;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-builder.Services.AddOpcUaServer<NamespaceManager, chdSystemManager>();
-//builder.Services.AddOpcUaServer<NamespaceManager, chdObjectSystemManager>();
+//builder.Services.AddOpcUaServer<NamespaceManager, chdSystemManager>();
+builder.Services.AddOpcUaServer<NamespaceManager, chdObjectSystemManager>();
 
 
 var host = builder.Build();

@@ -4,10 +4,5 @@ using System.Text;
 
 namespace chd.OpcUa.Server.ObjectSystem
 {
-    public class ObjectSystemEventAttribute : ObjectSystemAttribute
-    {
-        public ObjectSystemEventAttribute(string displayName) : base(displayName)
-        {
-        }
-    }
+    public class ObjectSystemEventAttribute(string displayName = null) : ObjectSystemAttribute(displayName);
 }

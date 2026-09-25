@@ -7,6 +7,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
@@ -71,6 +72,14 @@ namespace chd.OpcUa.Server.ObjectSystem
                     );
             }
 
+            foreach (var eventInfo in realType.GetEvents().Where(x => x.IsDefined(typeof(ObjectSystemEventAttribute), inherit: true)))
+            {
+                var attribute = eventInfo.GetCustomAttribute<ObjectSystemEventAttribute>();
+                block.AddEvent(attribute?.DisplayName ?? eventInfo.Name, attribute?.Description ?? string.Empty);
+
+                eventInfo.AddEventHandler(instance, CreateHandler(eventInfo));
+            }
+
             foreach (var method in realType.GetMethods().Where(m => m.IsDefined(typeof(ObjectSystemMethodAttribute), inherit: true)))
             {
                 var attribute = method.GetCustomAttribute<ObjectSystemMethodAttribute>();
@@ -83,6 +92,56 @@ namespace chd.OpcUa.Server.ObjectSystem
                 notifyPropertyChanged.PropertyChanged += NotifyPropertyChanged_PropertyChanged;
             }
 
+        }
+
+        private Delegate CreateHandler(EventInfo eventInfo)
+        {
+            var delegateType = eventInfo.EventHandlerType
+                               ?? throw new InvalidOperationException();
+
+            var invokeMethod = delegateType.GetMethod("Invoke")
+                               ?? throw new InvalidOperationException();
+
+            var parameters = invokeMethod
+                .GetParameters()
+                .Select(p => Expression.Parameter(p.ParameterType, p.Name))
+                .ToArray();
+
+            // Alle Event-Argumente nach object[] konvertieren
+            var arguments = Expression.NewArrayInit(
+                typeof(object),
+                parameters.Select(p =>
+                    Expression.Convert(p, typeof(object))));
+
+
+            var instanceExpression = Expression.Constant(this);
+
+            var eventInfoExpression = Expression.Constant(eventInfo);
+
+            var callbackMethod = this.GetType()
+                .GetMethod(nameof(OnEvent));
+
+            var body = Expression.Call(
+                instanceExpression,
+                callbackMethod,
+                eventInfoExpression,
+                arguments);
+
+            return Expression
+                .Lambda(delegateType, body, parameters)
+                .Compile();
+        }
+
+        public async Task OnEvent(EventInfo eventInfo, object[] parameter)
+        {
+            if (parameter.Length >= 2
+                && parameter[0] is IUaServerObject instance)
+            {
+                var attribute = eventInfo.GetCustomAttribute<ObjectSystemEventAttribute>();
+                var block = await this.FindBlockByIdentifier(instance.Name, CancellationToken.None);
+                await block.TriggerEvent(attribute?.DisplayName ?? eventInfo.Name, parameter[1].ToString(),
+                    CancellationToken.None);
+            }
         }
 
         private async void NotifyPropertyChanged_PropertyChanged(object? sender, PropertyChangedEventArgs e)

@@ -4,12 +4,8 @@ using System.Text;
 
 namespace chd.OpcUa.Server.ObjectSystem
 {
-    public class ObjectSystemMethodAttribute : ObjectSystemAttribute
+    public class ObjectSystemMethodAttribute(string displayName = null) : ObjectSystemAttribute(displayName)
     {
         public bool CanExecute { get; set; } = true;
-
-        public ObjectSystemMethodAttribute(string displayName = null) : base(displayName)
-        {
-        }
     }
 }

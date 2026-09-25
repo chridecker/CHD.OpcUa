@@ -7,6 +7,9 @@ namespace chd.OpcUa.ServerWorker.UaServerObjects
 {
     public class UaTimer(string name) : BaseUaServerObject(name, "Ua Timer Desc")
     {
+        [ObjectSystemEvent()]
+        public event EventHandler<string> TimerFinished;
+
         private CancellationTokenSource _cts;
 
         [ObjectSystemProperty("Time")]
@@ -45,6 +48,7 @@ namespace chd.OpcUa.ServerWorker.UaServerObjects
                 await Task.Delay(TimeSpan.FromSeconds(1), _cts.Token);
                 Time--;
             }
+            TimerFinished?.Invoke(this, "Timer finished");
 
             State = ETimerState.Finished;
         }, _cts.Token);
