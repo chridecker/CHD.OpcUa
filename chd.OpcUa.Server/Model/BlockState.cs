@@ -96,6 +96,9 @@ namespace chd.OpcUa.Server.Model
         {
             var baseEvent = new EventState(this);
             baseEvent.Initialize(_nodeManager.SystemContext, this, EventSeverity.Medium, LocalizedText.From(e.Message));
+            var typeId = baseEvent.GetDefaultTypeDefinitionId(_nodeManager.SystemContext);
+
+            baseEvent.Value.Value = e.Message.ConvertToVariant();
 
             return this.ReportEventAsync(_nodeManager.SystemContext, baseEvent, cancellationToken);
         }
